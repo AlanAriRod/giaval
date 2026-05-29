@@ -1,0 +1,100 @@
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 64px;
+  background: var(--navy-900);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 20px rgba(0,0,0,.3);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.logoBox {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--gold-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold-400);
+  background: rgba(212,168,67,.08);
+}
+
+.brandName {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: var(--white);
+}
+
+.userSection {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sessionInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.sessionLabel {
+  font-size: .7rem;
+  color: var(--slate-400);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.sessionUser {
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-full);
+  background: var(--gold-500);
+  color: var(--navy-900);
+  font-weight: 700;
+  font-size: .85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: .03em;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .45rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  color: var(--slate-300);
+  font-size: .85rem;
+  font-weight: 500;
+  transition: all var(--duration-fast);
+  cursor: pointer;
+}
+
+.logoutBtn:hover {
+  background: rgba(220,38,38,.15);
+  border-color: rgba(220,38,38,.3);
+  color: #fca5a5;
+}

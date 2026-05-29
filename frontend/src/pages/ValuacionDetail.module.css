@@ -1,0 +1,454 @@
+.page {
+  min-height: 100vh;
+  background: var(--slate-100);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  max-width: 1050px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+/* ── Not found ── */
+.notFound {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--slate-400);
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.notFound h2 { color: var(--slate-600); font-size: 1.4rem; }
+.notFound p  { font-size: .95rem; }
+
+/* ── Page header ── */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .55rem 1.1rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--slate-200);
+  background: var(--white);
+  color: var(--slate-600);
+  font-size: .87rem;
+  font-weight: 600;
+  transition: all var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.backBtn:hover {
+  border-color: var(--navy-500);
+  color: var(--navy-700);
+  background: var(--slate-50);
+}
+
+.pageTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--navy-900);
+}
+
+.pageSubtitle {
+  font-size: .85rem;
+  color: var(--slate-500);
+  margin-top: .1rem;
+}
+
+/* ── Banner ── */
+.imageBanner {
+  position: relative;
+  height: 240px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 2px solid var(--gold-400);
+  background: var(--navy-900);
+}
+
+.bannerImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bannerPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  color: var(--slate-500);
+  background:
+    linear-gradient(135deg, var(--navy-900) 0%, var(--navy-800) 50%, var(--navy-700) 100%);
+  font-size: .95rem;
+  font-weight: 500;
+}
+
+.bannerOverlay {
+  position: absolute;
+  bottom: 1rem;
+  left: 1.25rem;
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+}
+
+.bannerBadge {
+  display: inline-block;
+  padding: .3rem .9rem;
+  border-radius: var(--radius-full);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  backdrop-filter: blur(8px);
+}
+
+.bannerId {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--white);
+  background: rgba(0,0,0,.4);
+  padding: .3rem .75rem;
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(6px);
+}
+
+/* ── Section ── */
+.section {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--slate-200);
+  box-shadow: var(--shadow-md);
+}
+
+.sectionHeader {
+  background: var(--navy-900);
+  padding: 1.1rem 1.75rem;
+}
+
+.sectionTitle {
+  font-size: .95rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  color: var(--white);
+}
+
+.sectionSub {
+  font-size: .78rem;
+  color: var(--slate-400);
+  margin-top: .15rem;
+}
+
+/* ── Info grid ── */
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1px;
+  background: var(--slate-100);
+  border-bottom: 1px solid var(--slate-100);
+}
+
+.infoCard {
+  background: var(--white);
+  padding: 1.1rem 1.4rem;
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+}
+
+.infoCardWide {
+  grid-column: span 2;
+}
+
+.infoCardIcon {
+  color: var(--navy-500);
+  margin-top: .15rem;
+  flex-shrink: 0;
+}
+
+.infoCardLabel {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--slate-400);
+  margin-bottom: .2rem;
+}
+
+.infoCardValue {
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--slate-800);
+}
+
+/* ── Physical data ── */
+.physicalGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--slate-100);
+  border-bottom: 1px solid var(--slate-100);
+  border-top: 1px solid var(--slate-100);
+}
+
+.physCard {
+  background: var(--slate-50);
+  padding: 1.1rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .3rem;
+  text-align: center;
+}
+
+.physIcon { color: var(--navy-500); }
+
+.physValue {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--navy-800);
+}
+
+.physLabel {
+  font-size: .72rem;
+  color: var(--slate-500);
+  font-weight: 500;
+}
+
+/* ── Colindancias ── */
+.colindancias {
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid var(--slate-100);
+}
+
+.subTitle {
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--slate-500);
+  margin-bottom: .9rem;
+}
+
+.colGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: .75rem;
+}
+
+.colCard {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .7rem 1rem;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+}
+
+.colDir {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--navy-600);
+  min-width: 52px;
+}
+
+.colVal {
+  font-size: .85rem;
+  color: var(--slate-700);
+}
+
+/* ── Description ── */
+.descBox {
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid var(--slate-100);
+}
+
+.descText {
+  font-size: .9rem;
+  color: var(--slate-600);
+  line-height: 1.7;
+}
+
+/* ── Valores / Excel ── */
+.valoresSection {
+  padding: 1.5rem 1.75rem;
+}
+
+.valoresHeader {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: 1rem;
+  color: var(--navy-700);
+}
+
+.downloadBtn {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin-left: auto;
+  padding: .4rem .9rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--slate-200);
+  background: var(--white);
+  color: var(--slate-600);
+  font-size: .8rem;
+  font-weight: 600;
+  transition: all var(--duration-fast);
+}
+
+.downloadBtn:hover {
+  border-color: var(--navy-500);
+  color: var(--navy-700);
+}
+
+.excelTable {
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.valTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+}
+
+.valTable thead tr {
+  background: var(--navy-900);
+}
+
+.valTable thead th {
+  padding: .7rem 1rem;
+  text-align: left;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--slate-300);
+}
+
+.valTable tbody tr {
+  border-bottom: 1px solid var(--slate-100);
+}
+
+.valTable tbody tr:hover { background: var(--slate-50); }
+
+.valTable tbody td {
+  padding: .75rem 1rem;
+  color: var(--slate-700);
+}
+
+.moneyCol { text-align: right; font-variant-numeric: tabular-nums; }
+
+.totalRow {
+  background: var(--gold-100) !important;
+  border-top: 2px solid var(--gold-300) !important;
+}
+
+.totalRow td {
+  color: var(--navy-900) !important;
+  font-size: 1rem;
+}
+
+/* ── Historial ── */
+.historialLabel {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate-400);
+  padding: 1rem 1.75rem .5rem;
+}
+
+.historialList {
+  padding: .5rem 1.75rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.historialItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: .9rem 0;
+  border-bottom: 1px solid var(--slate-100);
+  animation: fadeUp .4s var(--ease-out) both;
+}
+
+.historialItem:last-child { border-bottom: none; }
+
+.historialDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: .35rem;
+  flex-shrink: 0;
+}
+
+.historialBody { flex: 1; }
+
+.historialCambio {
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--slate-800);
+  margin-bottom: .35rem;
+}
+
+.historialMeta {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.historialUser, .historialFecha {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .78rem;
+  color: var(--slate-400);
+}
+
+.editBtn {
+  margin-left: auto;
+  padding: .6rem 1.2rem;
+  border-radius: 8px;
+  background: #c9972a;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: .9rem;
+  transition: all .2s ease;
+}
+.editBtn:hover { background: #e0aa30; }
+
+@media (max-width: 680px) {
+  .infoCardWide { grid-column: span 1; }
+  .physicalGrid { grid-template-columns: repeat(2, 1fr); }
+  .colGrid { grid-template-columns: 1fr; }
+}

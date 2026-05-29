@@ -1,0 +1,220 @@
+.page {
+  min-height: 100vh;
+  background: var(--slate-100);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .55rem 1.1rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--slate-200);
+  background: var(--white);
+  color: var(--slate-600);
+  font-size: .87rem;
+  font-weight: 600;
+  transition: all var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.backBtn:hover {
+  border-color: var(--navy-500);
+  color: var(--navy-700);
+}
+
+.pageTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--navy-900);
+}
+
+.pageSubtitle {
+  font-size: .85rem;
+  color: var(--slate-500);
+}
+
+/* Success banner */
+.successBanner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  border-radius: var(--radius-md);
+  padding: .85rem 1.25rem;
+  font-size: .9rem;
+  font-weight: 500;
+  margin-bottom: 1.25rem;
+  animation: fadeIn var(--duration-fast) both;
+}
+
+/* Form grid */
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--slate-200);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: fadeUp .4s var(--ease-out) both;
+}
+
+.cardFull { grid-column: 1 / -1; }
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--navy-600);
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--slate-100);
+}
+
+/* Row layouts */
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.row3 {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr;
+  gap: 1rem;
+}
+
+/* Field */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--slate-700);
+}
+
+.req {
+  color: var(--danger);
+  margin-left: .15rem;
+}
+
+.input, .select {
+  padding: .7rem .95rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--slate-200);
+  background: var(--slate-50);
+  font-size: .9rem;
+  color: var(--slate-800);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  width: 100%;
+}
+
+.input:focus, .select:focus {
+  outline: none;
+  border-color: var(--navy-500);
+  background: var(--white);
+  box-shadow: 0 0 0 3px rgba(45,79,138,.08);
+}
+
+.input::placeholder { color: var(--slate-400); }
+
+.inputError {
+  border-color: var(--danger) !important;
+  background: #fff5f5 !important;
+}
+
+.fieldError {
+  font-size: .77rem;
+  color: var(--danger);
+}
+
+/* Submit row */
+.submitRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: .85rem;
+  margin-top: 1.75rem;
+}
+
+.cancelBtn {
+  padding: .75rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--slate-200);
+  background: var(--white);
+  color: var(--slate-600);
+  font-size: .92rem;
+  font-weight: 600;
+  transition: all var(--duration-fast);
+}
+
+.cancelBtn:hover {
+  border-color: var(--slate-300);
+  background: var(--slate-50);
+}
+
+.submitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .75rem 1.75rem;
+  border-radius: var(--radius-md);
+  background: var(--gold-500);
+  color: var(--navy-950);
+  font-size: .95rem;
+  font-weight: 700;
+  transition: all var(--duration-base) var(--ease-out);
+  box-shadow: 0 2px 12px rgba(201,151,42,.3);
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: var(--gold-400);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-gold);
+}
+
+.submitBtn:disabled { opacity: .7; cursor: not-allowed; }
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(0,0,0,.2);
+  border-top-color: var(--navy-900);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .row2, .row3 { grid-template-columns: 1fr; }
+}

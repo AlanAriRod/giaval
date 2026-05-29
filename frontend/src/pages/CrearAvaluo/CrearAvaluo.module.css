@@ -1,0 +1,136 @@
+.page { min-height: 100vh; background: #f1f5f9; }
+.main { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+
+/* ── Barra de progreso ── */
+.progressBar {
+  display: flex; align-items: center; margin-bottom: 3rem;
+  padding: 0 1rem;
+}
+.progressStep {
+  display: flex; align-items: center; gap: .6rem; flex-shrink: 0;
+}
+.progressDot {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid #e2e8f0; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 700; color: #94a3b8;
+  transition: all .25s ease;
+}
+.progressActive .progressDot {
+  border-color: #c9972a; background: #c9972a; color: #0f172a;
+}
+.progressLabel { font-size: .8rem; font-weight: 600; color: #94a3b8; }
+.progressActive .progressLabel { color: #0f172a; }
+.progressLine {
+  flex: 1; height: 2px; background: #e2e8f0;
+  margin: 0 .75rem; min-width: 40px; transition: background .25s;
+}
+.progressLineFill { background: #c9972a; }
+
+/* ── Pasos ── */
+.pasoWrap  { animation: fadeUp .25s ease both; }
+@keyframes fadeUp { from{transform:translateY(12px);opacity:0} to{transform:none;opacity:1} }
+
+.pasoHeader { margin-bottom: 2rem; }
+.pasoTitle  { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
+.pasoSub    { font-size: .9rem; color: #64748b; margin-top: .4rem; }
+.tipoBadge  { text-transform: capitalize; color: #92400e; background: #fef3c7; padding: .1rem .45rem; border-radius: 9999px; }
+
+.backLink {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .82rem; color: #64748b; margin-bottom: 1.5rem;
+  padding: .35rem .7rem; border-radius: 6px;
+  border: 1px solid #e2e8f0; background: #fff; transition: all .15s;
+}
+.backLink:hover { color: #1e3a5f; border-color: #1e3a5f; }
+
+/* ── Modo ── */
+.modeGrid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;
+}
+.modeCard {
+  background: #fff; border-radius: 12px; border: 1.5px solid #e2e8f0;
+  padding: 1.75rem; text-align: left;
+  transition: all .2s ease; cursor: pointer; display: flex; flex-direction: column; gap: .6rem;
+}
+.modeCard:hover { border-color: #1e3a5f; box-shadow: 0 4px 20px rgba(30,58,95,.12); transform: translateY(-2px); }
+.modeIcon { color: #1e3a5f; }
+.modeIconGold { color: #c9972a; }
+.modeTitle { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
+.modeDesc  { font-size: .88rem; color: #64748b; line-height: 1.55; flex:1; }
+.modeCta   { display: inline-flex; align-items: center; gap: .25rem; font-size: .82rem; font-weight: 700; color: #1e3a5f; margin-top: .5rem; }
+.modeCtaGold { color: #c9972a; }
+
+/* ── Tipo ── */
+.tipoGrid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+}
+.tipoCard {
+  background: #fff; border-radius: 10px; border: 1.5px solid #e2e8f0;
+  padding: 1.4rem; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: .4rem;
+  transition: all .2s ease;
+}
+.tipoCard:hover { border-color: #c9972a; box-shadow: 0 4px 16px rgba(201,151,42,.12); transform: translateY(-2px); }
+.tipoLabel { font-size: 1rem; font-weight: 700; color: #0f172a; }
+.tipoDesc  { font-size: .84rem; color: #64748b; line-height: 1.5; flex: 1; }
+.tipoCta   { display: inline-flex; align-items: center; gap: .2rem; font-size: .8rem; font-weight: 700; color: #c9972a; margin-top: .35rem; }
+
+/* ── Docs ── */
+.dropZone {
+  border: 2px dashed #cbd5e1; border-radius: 12px;
+  padding: 2.5rem; text-align: center; cursor: pointer;
+  color: #64748b; transition: all .2s ease; background: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: .6rem;
+}
+.dropZone:hover { border-color: #1e3a5f; background: #f8fafc; }
+.dropZone span { color: #1e3a5f; font-weight: 700; text-decoration: underline; }
+.dropZone small { font-size: .78rem; color: #94a3b8; }
+
+.docsGrid { display: grid; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); gap: .85rem; margin-top: 1.25rem; }
+.docCard  {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 1rem; display: flex; align-items: flex-start; gap: .75rem;
+  position: relative;
+}
+.docThumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.docInfo  { flex: 1; display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.docName  { font-size: .82rem; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.docSize  { font-size: .72rem; color: #94a3b8; }
+.docCat   { font-size: .78rem; padding: .25rem .4rem; border-radius: 5px; border: 1px solid #e2e8f0; color: #475569; }
+.docRemove {
+  position: absolute; top: .5rem; right: .5rem;
+  padding: .2rem; border-radius: 5px; color: #94a3b8; background: #f1f5f9; transition: all .15s;
+}
+.docRemove:hover { background: #fee2e2; color: #dc2626; }
+
+/* ── Acciones ── */
+.pasoActions {
+  display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;
+}
+.btnPrimary {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .7rem 1.5rem; border-radius: 8px;
+  background: #c9972a; color: #0f172a;
+  font-weight: 700; font-size: .92rem;
+  transition: all .2s ease;
+}
+.btnPrimary:hover { background: #e0aa30; transform: translateY(-1px); }
+.btnSecondary {
+  padding: .7rem 1.3rem; border-radius: 8px;
+  border: 1.5px solid #e2e8f0; background: #fff;
+  color: #64748b; font-size: .9rem; font-weight: 600;
+  transition: all .15s;
+}
+.btnSecondary:hover { border-color: #cbd5e1; color: #0f172a; }
+
+/* ── Coming soon ── */
+.comingSoon {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1rem; padding: 4rem 2rem; text-align: center; color: #64748b;
+}
+.comingSoon h2 { font-size: 1.3rem; font-weight: 700; color: #0f172a; }
+.comingSoon p  { max-width: 400px; font-size: .9rem; line-height: 1.6; }
+
+@media (max-width: 640px) {
+  .modeGrid, .tipoGrid { grid-template-columns: 1fr; }
+}
