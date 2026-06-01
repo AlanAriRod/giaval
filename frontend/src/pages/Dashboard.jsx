@@ -15,14 +15,14 @@ const ESTADO = {
   final:      { label: 'Final',      color: '#16a34a', bg: '#dcfce7' },
 }
 const TIPO = {
-  comercial: { label: 'Comercial',  color: '#92400e', bg: '#fef3c7' },
-  referido:  { label: 'Referido',   color: '#9d174d', bg: '#fce7f3' },
-  catastral: { label: 'Catastral',  color: '#3730a3', bg: '#e0e7ff' },
-  judicial:  { label: 'Judicial',   color: '#065f46', bg: '#d1fae5' },
+  comercial: { label: 'Comercial', color: '#92400e', bg: '#fef3c7' },
+  referido:  { label: 'Referido',  color: '#9d174d', bg: '#fce7f3' },
+  catastral: { label: 'Catastral', color: '#3730a3', bg: '#e0e7ff' },
+  judicial:  { label: 'Judicial',  color: '#065f46', bg: '#d1fae5' },
 }
 
 const fmtMXN = (v) =>
-  v != null
+  v != null && !isNaN(v) && parseFloat(v) > 0
     ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN',
         minimumFractionDigits: 0 }).format(v)
     : '—'
@@ -46,16 +46,16 @@ export default function Dashboard() {
   const [sortField,    setSortField]    = useState('created_at')
   const [sortDir,      setSortDir]      = useState('desc')
 
-  // Modal de notas
+  // Modal notas
   const [notaModal,  setNotaModal]  = useState(null)
   const [notaTexto,  setNotaTexto]  = useState('')
   const [notaSaving, setNotaSaving] = useState(false)
   const [notaSaved,  setNotaSaved]  = useState(false)
 
-  // Modal de confirmación de eliminación
-  const [deleteModal,   setDeleteModal]   = useState(null) // { id, folio, titulo }
-  const [deleting,      setDeleting]      = useState(false)
-  const [deleteError,   setDeleteError]   = useState('')
+  // Modal eliminar
+  const [deleteModal, setDeleteModal] = useState(null)
+  const [deleting,    setDeleting]    = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const cargarDatos = useCallback(async () => {
     setCargando(true)
@@ -84,14 +84,14 @@ export default function Dashboard() {
     let lista = avaluos.filter(a => {
       const q = busqueda.toLowerCase()
       const ok = !q ||
-        (a.folio_interno  || '').toLowerCase().includes(q) ||
-        (a.titulo         || '').toLowerCase().includes(q) ||
-        (a.nombre_propietario || '').toLowerCase().includes(q) ||
-        (a.nombre_solicitante || '').toLowerCase().includes(q) ||
+        (a.folio_interno       || '').toLowerCase().includes(q) ||
+        (a.titulo              || '').toLowerCase().includes(q) ||
+        (a.nombre_propietario  || '').toLowerCase().includes(q) ||
+        (a.nombre_solicitante  || '').toLowerCase().includes(q) ||
         [a.calle, a.colonia, a.municipio].filter(Boolean).join(' ').toLowerCase().includes(q)
       return ok &&
-        (filterTipo   === 'todos' || a.tipo_avaluo === filterTipo) &&
-        (filterEstado === 'todos' || a.estado      === filterEstado)
+        (filterTipo   === 'todos' || a.tipo_avaluo   === filterTipo) &&
+        (filterEstado === 'todos' || a.estado_avaluo === filterEstado)
     })
     return [...lista].sort((a, b) => {
       let va = a[sortField] ?? '', vb = b[sortField] ?? ''
@@ -145,18 +145,11 @@ export default function Dashboard() {
     setDeleting(true)
     setDeleteError('')
     try {
-      const r = await authFetch(`/api/avaluos/${deleteModal.id}`, {
-        method: 'DELETE',
-      })
+      const r    = await authFetch(`/api/avaluos/${deleteModal.id}`, { method: 'DELETE' })
       const data = await r.json()
-      if (!r.ok) {
-        setDeleteError(data.message || 'No se pudo eliminar el avalúo.')
-        return
-      }
-      // Quitar de la lista local sin recargar todo
+      if (!r.ok) { setDeleteError(data.message || 'No se pudo eliminar.'); return }
       setAvaluos(prev => prev.filter(a => a.id !== deleteModal.id))
       setDeleteModal(null)
-      // Actualizar stats
       cargarDatos()
     } catch {
       setDeleteError('Error de conexión. Intenta de nuevo.')
@@ -168,7 +161,10 @@ export default function Dashboard() {
   const ubicacion = (a) =>
     [a.calle, a.numero, a.colonia, a.municipio].filter(Boolean).join(', ') || '—'
 
-  const valorPrincipal = (a) => a.valor_mercado || a.valor_fisico || a.valor_referido
+  // Usa valor_conclusivo (ya resuelto en el backend para comercial y referido)
+  // Con fallback a valor_mercado / valor_fisico por compatibilidad
+  const valorPrincipal = (a) =>
+    a.valor_conclusivo || a.valor_mercado || a.valor_fisico || a.valor_referido || null
 
   return (
     <div className={styles.page}>
@@ -203,11 +199,11 @@ export default function Dashboard() {
         {stats && (
           <div className={styles.statsGrid}>
             {[
-              { v: stats.total || 0,      l: 'Total',      cls: ''               },
-              { v: stats.en_proceso || 0, l: 'En Proceso', cls: styles.statAmbar },
-              { v: stats.preliminar || 0, l: 'Preliminar', cls: styles.statBlue  },
-              { v: stats.finales || 0,    l: 'Finales',    cls: styles.statGreen },
-              { v: stats.con_notas || 0,  l: 'Con Notas',  cls: styles.statPurple},
+              { v: stats.total      || 0, l: 'Total',      cls: ''                },
+              { v: stats.en_proceso || 0, l: 'En Proceso', cls: styles.statAmbar  },
+              { v: stats.preliminar || 0, l: 'Preliminar', cls: styles.statBlue   },
+              { v: stats.finales    || 0, l: 'Finales',    cls: styles.statGreen  },
+              { v: stats.con_notas  || 0, l: 'Con Notas',  cls: styles.statPurple },
             ].map(({ v, l, cls }) => (
               <div key={l} className={`${styles.statCard} ${cls}`}>
                 <span className={styles.statNum}>{v}</span>
@@ -269,9 +265,9 @@ export default function Dashboard() {
                   <th className={styles.sortable} onClick={() => toggleSort('titulo')}>Título</th>
                   <th className={styles.sortable} onClick={() => toggleSort('tipo_avaluo')}>Tipo</th>
                   <th>Ubicación</th>
-                  <th>Propietario</th>
-                  <th className={styles.sortable} onClick={() => toggleSort('valor_mercado')}>Valor</th>
-                  <th className={styles.sortable} onClick={() => toggleSort('estado')}>Estado</th>
+                  <th className={styles.sortable} onClick={() => toggleSort('nombre_propietario')}>Propietario</th>
+                  <th className={styles.sortable} onClick={() => toggleSort('valor_conclusivo')}>Valor</th>
+                  <th className={styles.sortable} onClick={() => toggleSort('estado_avaluo')}>Estado</th>
                   <th className={styles.sortable} onClick={() => toggleSort('fecha_avaluo')}>Fecha</th>
                   <th>Notas</th>
                   <th>Acciones</th>
@@ -285,8 +281,8 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ) : filtrados.map(av => {
-                  const est = ESTADO[av.estado] || ESTADO.borrador
-                  const tip = TIPO[av.tipo_avaluo] || TIPO.comercial
+                  const est = ESTADO[av.estado_avaluo] || ESTADO.borrador
+                  const tip = TIPO[av.tipo_avaluo]     || TIPO.comercial
                   return (
                     <tr key={av.id}>
                       <td className={styles.folioCell}>{av.folio_interno}</td>
@@ -336,7 +332,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── Modal notas ── */}
+        {/* Modal notas */}
         {notaModal && (
           <div className={styles.modalOverlay} onClick={() => setNotaModal(null)}>
             <div className={styles.modalCard} onClick={e => e.stopPropagation()}>
@@ -365,12 +361,9 @@ export default function Dashboard() {
                   )}
                   <button className={styles.notaSaveBtn}
                     onClick={guardarNota} disabled={notaSaving}>
-                    {notaSaving
-                      ? 'Guardando…'
-                      : notaSaved
-                        ? <><CheckCircle2 size={14}/> ¡Guardado!</>
-                        : <><Save size={14}/> Guardar</>
-                    }
+                    {notaSaving ? 'Guardando…'
+                      : notaSaved ? <><CheckCircle2 size={14}/> ¡Guardado!</>
+                      : <><Save size={14}/> Guardar</>}
                   </button>
                 </div>
               </div>
@@ -378,18 +371,16 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── Modal confirmación eliminar ── */}
+        {/* Modal eliminar */}
         {deleteModal && (
           <div className={styles.modalOverlay} onClick={() => !deleting && setDeleteModal(null)}>
             <div className={styles.modalCard} onClick={e => e.stopPropagation()}
               style={{ maxWidth: '420px' }}>
               <div className={styles.modalHeader}>
                 <div style={{ display:'flex', alignItems:'center', gap:'.75rem' }}>
-                  <div style={{
-                    width:'40px', height:'40px', borderRadius:'50%',
+                  <div style={{ width:'40px', height:'40px', borderRadius:'50%',
                     background:'#fee2e2', display:'flex', alignItems:'center',
-                    justifyContent:'center', flexShrink:0,
-                  }}>
+                    justifyContent:'center', flexShrink:0 }}>
                     <Trash2 size={18} color="#dc2626"/>
                   </div>
                   <div>
@@ -402,46 +393,36 @@ export default function Dashboard() {
                   <X size={18}/>
                 </button>
               </div>
-
-              <p style={{ fontSize:'.9rem', color:'#475569', lineHeight:1.6,
-                          margin:'1rem 0', padding:'0' }}>
-                ¿Estás seguro de que deseas eliminar el avalúo{' '}
+              <p style={{ fontSize:'.9rem', color:'#475569', lineHeight:1.6, margin:'1rem 0' }}>
+                ¿Estás seguro de eliminar{' '}
                 <strong style={{ color:'#0f172a' }}>
                   {deleteModal.titulo || deleteModal.folio}
-                </strong>?
-                Esta acción <strong style={{ color:'#dc2626' }}>no se puede deshacer</strong> y
-                eliminará permanentemente todos los datos del formulario.
+                </strong>?{' '}
+                Esta acción <strong style={{ color:'#dc2626' }}>no se puede deshacer</strong>.
               </p>
-
               {deleteError && (
-                <div style={{
-                  padding:'.75rem 1rem', background:'#fef2f2',
+                <div style={{ padding:'.75rem 1rem', background:'#fef2f2',
                   border:'1px solid #fecaca', borderRadius:'8px',
-                  color:'#dc2626', fontSize:'.85rem', marginBottom:'1rem',
-                }}>
+                  color:'#dc2626', fontSize:'.85rem', marginBottom:'1rem' }}>
                   {deleteError}
                 </div>
               )}
-
               <div style={{ display:'flex', gap:'.75rem', justifyContent:'flex-end' }}>
                 <button
                   style={{ padding:'.6rem 1.2rem', borderRadius:'8px',
-                           border:'1.5px solid #e2e8f0', background:'#fff',
-                           color:'#475569', fontWeight:600, fontSize:'.9rem',
-                           cursor: deleting ? 'not-allowed' : 'pointer' }}
-                  onClick={() => !deleting && setDeleteModal(null)}
-                  disabled={deleting}>
+                    border:'1.5px solid #e2e8f0', background:'#fff',
+                    color:'#475569', fontWeight:600, fontSize:'.9rem',
+                    cursor: deleting ? 'not-allowed' : 'pointer' }}
+                  onClick={() => !deleting && setDeleteModal(null)} disabled={deleting}>
                   Cancelar
                 </button>
                 <button
                   style={{ padding:'.6rem 1.2rem', borderRadius:'8px',
-                           background: deleting ? '#fca5a5' : '#dc2626',
-                           color:'#fff', fontWeight:700, fontSize:'.9rem',
-                           display:'flex', alignItems:'center', gap:'.4rem',
-                           cursor: deleting ? 'not-allowed' : 'pointer',
-                           transition:'background .15s' }}
-                  onClick={confirmarEliminar}
-                  disabled={deleting}>
+                    background: deleting ? '#fca5a5' : '#dc2626',
+                    color:'#fff', fontWeight:700, fontSize:'.9rem',
+                    display:'flex', alignItems:'center', gap:'.4rem',
+                    cursor: deleting ? 'not-allowed' : 'pointer' }}
+                  onClick={confirmarEliminar} disabled={deleting}>
                   <Trash2 size={14}/>
                   {deleting ? 'Eliminando…' : 'Sí, eliminar'}
                 </button>

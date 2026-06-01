@@ -11,13 +11,21 @@ function verificarToken(req, res, next) {
   const token = authHeader.split(' ')[1]
 
   try {
-    const decoded    = jwt.verify(token, process.env.JWT_SECRET)
-    req.usuarioId    = decoded.id
-    req.username     = decoded.username
-    req.rol          = decoded.rol
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+
+    req.usuarioId = decoded.id
+    req.username  = decoded.username
+    req.rol       = decoded.rol
+
+    req.usuario = {
+      id:       decoded.id,
+      username: decoded.username,
+      rol:      decoded.rol,
+    }
+
     next()
   } catch (err) {
-    return res.status(401).json({ message: 'Token inválido o expirado. Inicia sesión de nuevo.' })
+    return res.status(401).json({ message: 'Token invalido o expirado. Inicia sesion de nuevo.' })
   }
 }
 

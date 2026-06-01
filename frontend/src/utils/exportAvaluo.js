@@ -1,9 +1,9 @@
-// exportAvaluo.js — v4 COMPLETO
-// CAMBIOS: PDF con TODOS los datos de todas las pestañas
-//          Gráfica de pastel en Costos (Terreno vs Construcción)
-//          Gráfica de barras comparando enfoques en Conclusión
-//          Gráficas de barras de comparables
-// Excel:   9 hojas con todos los datos, anchos, formato completo
+// exportAvaluo.js — v5 COMPLETO
+// CAMBIOS sobre v4:
+//   1. Avalúo referido: valor conclusivo usa valorReferidoFinal (fix)
+//   2. Portada: también usa valorReferidoFinal para referidos
+//   3. PDFs anexos: se fusionan al final con pdf-lib (en lugar de solo mencionarlos)
+//   4. Excel hoja 9: incluye valorReferidoFinal
 
 const fmtM  = (v,dec=2) => v!=null&&!isNaN(v)&&parseFloat(v)>0
   ? new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:dec}).format(parseFloat(v)) : '—'
@@ -25,11 +25,7 @@ function calcEnNR(comparables, factoresCustom, tipo) {
   return vus.length>0 ? Math.round(vus.reduce((a,b)=>a+b,0)/vus.length) : null
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  PDF
-// ══════════════════════════════════════════════════════════════════
-// ── Convierte cualquier imagen a JPEG via Canvas (browser) ────────
-// ── Debug helper (remove in production) ────────────────────────
+// ── Debug helper ────────────────────────────────────────────
 function debugFotos(label, arr) {
   if (!arr?.length) { console.log(`[PDF] ${label}: vacío`); return }
   console.log(`[PDF] ${label}: ${arr.length} elementos`)
@@ -82,7 +78,6 @@ async function convertirImagenes(form) {
       return { ...item, [key]: fotosConv.filter(Boolean) }
     }))
   }
-  // Normalize fotos: extract src from any format
   const fotosNorm = (form.fotos||[]).map(extractSrc).filter(Boolean)
   console.log(`[PDF] fotos normalizadas: ${fotosNorm.length}`)
   const [fotos, imgMacro, imgMicro, cc, ct, cr] = await Promise.all([
@@ -97,18 +92,50 @@ async function convertirImagenes(form) {
     comparablesCasa: cc, comparablesTerreno: ct, comparablesRentas: cr }
 }
 
+// ══════════════════════════════════════════════════════════════
+// FUSIÓN DE PDFs con pdf-lib
+// Recibe el ArrayBuffer del PDF principal (de jsPDF) y un array
+// de { nombre, bytes: ArrayBuffer } de PDFs anexos.
+// Devuelve un Blob del PDF fusionado.
+// ══════════════════════════════════════════════════════════════
+async function fusionarPDFs(mainPdfArrayBuffer, anexosPDF) {
+  if (!anexosPDF?.length) {
+    return new Blob([mainPdfArrayBuffer], { type: 'application/pdf' })
+  }
+  try {
+    const { PDFDocument } = await import('pdf-lib')
+    const finalDoc = await PDFDocument.load(mainPdfArrayBuffer)
+    for (const anexo of anexosPDF) {
+      try {
+        const anexoDoc = await PDFDocument.load(anexo.bytes)
+        const paginas  = await finalDoc.copyPages(anexoDoc, anexoDoc.getPageIndices())
+        paginas.forEach(p => finalDoc.addPage(p))
+        console.log(`[PDF-LIB] Anexado: ${anexo.nombre} (${paginas.length} págs.)`)
+      } catch(e) {
+        console.warn(`[PDF-LIB] No se pudo anexar "${anexo.nombre}":`, e.message)
+      }
+    }
+    const pdfBytes = await finalDoc.save()
+    return new Blob([pdfBytes], { type: 'application/pdf' })
+  } catch(e) {
+    console.error('[PDF-LIB] Error en fusión, descargando solo PDF principal:', e.message)
+    return new Blob([mainPdfArrayBuffer], { type: 'application/pdf' })
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PDF PRINCIPAL
+// ══════════════════════════════════════════════════════════════════
 export async function exportarPDF(formOriginal, avaluoMeta={}) {
-  // Convertir TODAS las imágenes a JPEG antes de generar el PDF
   console.log('[PDF] Convirtiendo imágenes a JPEG…')
   const form = await convertirImagenes(formOriginal)
   console.log('[PDF] Imágenes convertidas, generando PDF…')
-  const { default: jsPDF }    = await import('jspdf')
+  const { default: jsPDF }     = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
   const doc = new jsPDF({orientation:'portrait',unit:'mm',format:'letter'})
   const PW=215.9, MG=13, CW=PW-MG*2
   let y=0, pageNum=0
 
-  // Paleta
   const NAVY=[30,58,95],GOLD=[201,151,42],LGRAY=[241,245,249],
         MGRAY=[226,232,240],DGRAY=[100,116,139],WHITE=[255,255,255],
         BLACK=[15,23,42],RED=[220,38,38],GREEN=[22,163,74],BLUE=[37,99,235]
@@ -170,15 +197,12 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     }
   }
 
-  // ── Gráfica de pastel ─────────────────────────────────────────
-  // data: [{label, value, color}]
   const drawPie = (title, data, cx, cy, r=22) => {
     const total = data.reduce((a,d)=>a+d.value,0)
     if(total<=0) return
     let angle = -Math.PI/2
     data.forEach(d=>{
       const slice = (d.value/total)*Math.PI*2
-      // jsPDF no tiene arc nativo, simulamos con triángulos
       const steps=32
       const pts=[]
       for(let i=0;i<=steps;i++){
@@ -187,13 +211,11 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       }
       doc.setFillColor(...d.color)
       doc.setDrawColor(255,255,255); doc.setLineWidth(0.3)
-      // Dibujar segmento como polígono
       const path=[[cx,cy],...pts]
       doc.lines(
         path.slice(1).map((p,i)=>[p[0]-path[i][0], p[1]-path[i][1]]),
         path[0][0], path[0][1], [1,1], 'FD', true
       )
-      // Etiqueta
       const midA = angle+slice/2
       const lx=cx+(r*0.65)*Math.cos(midA)
       const ly=cy+(r*0.65)*Math.sin(midA)
@@ -204,10 +226,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       }
       angle+=slice
     })
-    // Título
     doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...NAVY)
     doc.text(title, cx, cy-r-4, {align:'center'})
-    // Leyenda
     let ly2=cy+r+6
     data.forEach(d=>{
       doc.setFillColor(...d.color); doc.rect(cx-25,ly2-2.5,5,3,'F')
@@ -216,7 +236,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     })
   }
 
-  // ── Gráfica de barras horizontales ───────────────────────────
   const drawBars = (title, data, x=MG, maxW=140) => {
     if(!data.length) return
     const barH=5.5, gap=2
@@ -240,7 +259,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     y+=data.length*(barH+gap)+4
   }
 
-  // ── Insertar imagen JPEG (ya convertida) ────────────────────────
   const addImage = (b64, lbl='', maxW=85, maxH=55, x=MG) => {
     if (!b64 || typeof b64 !== 'string' || b64.length < 100) return
     checkY(maxH + 8)
@@ -258,10 +276,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     y += maxH + 4
   }
 
-  // ── Layout de 2 fotos por fila con leyenda ────────────────────
   const agregarAnexoFotografico = (fotos, titulo, leyendas=[]) => {
     if (!fotos?.length) return
-    // Normalizar elementos — acepta strings o {src,...} objects
     const fotosNorm = fotos.map(f => typeof f === 'string' ? f : (f?.src||f?.url||f?.data||null)).filter(Boolean)
     if (!fotosNorm.length) return
     addPage()
@@ -273,9 +289,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       row.forEach((src, j) => {
         const px = MG + j * (fw + 3)
         if (src) {
-          try {
-            doc.addImage(src, 'JPEG', px, y, fw, fh, undefined, 'FAST')
-          } catch(e) {
+          try { doc.addImage(src, 'JPEG', px, y, fw, fh, undefined, 'FAST') }
+          catch(e) {
             doc.setFillColor(...LGRAY); doc.rect(px, y, fw, fh, 'F')
             doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
             doc.text('[ Imagen ]', px + fw/2, y + fh/2, {align:'center'})
@@ -293,6 +308,41 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     }
   }
 
+  const fichaComparable = (comp, idx, tipo) => {
+    const supKey = tipo==='casa' ? 'supConst' : 'supM2'
+    checkY(22)
+    const bx=MG, by=y, bh=20
+    doc.setFillColor(...LGRAY); doc.rect(bx,by,CW,bh,'F')
+    doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.rect(bx,by,CW,bh,'S')
+    doc.setFillColor(...NAVY); doc.rect(bx,by,10,bh,'F')
+    doc.setTextColor(...WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(10)
+    doc.text(String(idx+1),bx+5,by+bh/2+1.5,{align:'center'})
+    const fx=bx+12, fw=CW-12
+    doc.setTextColor(...BLACK); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
+    const loc=[comp.ciudad,comp.colonia].filter(Boolean).join(' — ')||'Sin ubicación'
+    doc.text(loc,fx,by+4.5)
+    doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    doc.text(comp.oferta?fmtM(comp.oferta):'—',PW-MG-2,by+4.5,{align:'right'})
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+    if(comp[supKey]) doc.text(`${comp[supKey]} m²`,PW-MG-2,by+8.5,{align:'right'})
+    doc.setTextColor(...BLACK); doc.setFontSize(6.2)
+    let infoY=by+9
+    if(comp.telefono){doc.setFont('helvetica','bold');doc.text('Tel:',fx,infoY);doc.setFont('helvetica','normal');doc.text(comp.telefono,fx+8,infoY);infoY+=3.5}
+    if(comp.informante){doc.setFont('helvetica','bold');doc.text('Inf:',fx,infoY);doc.setFont('helvetica','normal');doc.text(comp.informante,fx+8,infoY);infoY+=3.5}
+    if(comp.descripcion||comp.caracteristicas){
+      const desc=comp.descripcion||comp.caracteristicas||''
+      const dlines=doc.splitTextToSize(desc,fw-30)
+      doc.setFontSize(6); doc.setTextColor(...DGRAY)
+      doc.text(dlines.slice(0,1),fx,infoY)
+    }
+    if(comp.url){
+      doc.setFont('helvetica','italic'); doc.setFontSize(5.8); doc.setTextColor(37,99,235)
+      const urlText=comp.url.length>70?comp.url.substring(0,70)+'…':comp.url
+      doc.text(urlText,fx,by+bh-1.5)
+    }
+    y+=bh+2
+  }
+
   // ═══════════════════════════════════════════
   //  PORTADA
   // ═══════════════════════════════════════════
@@ -305,7 +355,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.text(form.fechaAvaluo||'',PW-MG,10,{align:'right'})
   y=18
 
-  // Logo/marca
   doc.setFillColor(...NAVY); doc.rect(MG,y,CW,26,'F')
   doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(14)
   doc.text('GIAVAL',PW/2,y+8,{align:'center'})
@@ -315,13 +364,11 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.text(form.maestria||'',PW/2,y+25,{align:'center'})
   y+=30
 
-  // Banner tipo
   doc.setFillColor(...GOLD); doc.rect(MG,y,CW,9,'F')
   doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(10)
   doc.text((form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase(),PW/2,y+6.5,{align:'center'})
   y+=13
 
-  // Caja de datos
   doc.setDrawColor(...NAVY); doc.setLineWidth(0.3); doc.rect(MG,y,CW,48,'S')
   const c2=MG+CW/2+2; let yL=y+6, yR=y+6
   const pC=(lbl,val,left=true)=>{
@@ -344,18 +391,12 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   pC('Régimen', form.regimenPropiedad,false)
   y+=51
 
-  // Foto de fachada en portada (ya convertida a JPEG por convertirImagenes)
-  // Normalizar primera foto (puede ser string o {src,label} object)
-  // Portada: usa fotoPrincipal (tab Portada) si existe, sino la primera del tab Fotos
   const fotoFachada = form.fotoPrincipal || form.fotos?.[0] || null
   if(fotoFachada){
-    try{
-      doc.addImage(fotoFachada, 'JPEG', MG, y, CW, 52, undefined, 'FAST')
-      y+=54
-    }catch(e){ y+=4 }
+    try{ doc.addImage(fotoFachada, 'JPEG', MG, y, CW, 52, undefined, 'FAST'); y+=54 }
+    catch(e){ y+=4 }
   } else { y+=4 }
 
-  // Dirección
   const dir=[form.calle,form.numeroExterior,form.colonia,form.municipio,form.entidadFederativa].filter(Boolean).join(', ')
   if(dir){
     doc.setFillColor(...LGRAY); doc.rect(MG,y,CW,8,'F')
@@ -422,8 +463,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     ['Núm. de Frentes', form.numeroFrente],
     ['Servidumbres', form.servidumbre||'Ninguna'],
   ])
-
-  // Escritura
   y+=3; subTit('Datos de la Escritura / Notaría')
   grid3([
     ['Notario',form.notarioNombre],['Núm. Notaría',form.numeroNotario],['Ciudad',form.notarioCiudad],
@@ -435,7 +474,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   // ═══════════════════════════════════════════
   addPage()
   secTit('III. Descripción del Inmueble')
-  // Descripción textual (llenada desde plano/OCR)
   if(form.descripcionInmueble){
     checkY(20)
     doc.setFillColor(...LGRAY); doc.setDrawColor(...NAVY); doc.setLineWidth(0.15)
@@ -467,13 +505,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     grid3([['Densidad Habitacional',form.densidadHabitacional||''],['Intensidad Construcción',form.intensidadConstruccion||''],['Caract. Panorámicas',form.caracteristicasPanoramicas||'']])
   }
   if(form.estructura){ y+=2; campo('Estructura',form.estructura) }
-
-  // Instalaciones
-  const instFlds=[['Hidráulica',form.hidraulico],['Eléctrica',form.electrico],
-    ['Carpintería',form.carpinteria],['Herrería',form.herreria]]
+  const instFlds=[['Hidráulica',form.hidraulico],['Eléctrica',form.electrico],['Carpintería',form.carpinteria],['Herrería',form.herreria]]
   instFlds.filter(([,v])=>v).forEach(([l,v])=>campo(l,v))
-
-  // Acabados
   if(form.acabados?.length){
     y+=3; subTit('Tabla de Acabados por Espacio Arquitectónico')
     autoTable(doc,{
@@ -491,16 +524,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   // ═══════════════════════════════════════════
   if(form.imgMacro||form.imgMicro){
     addPage(); secTit('IV. Localización — Macro y Micro Croquis')
-    if(form.imgMacro){ addImage(form.imgMacro,'Macro Localización — Contexto Urbano General',90,58) }
-    if(form.imgMicro){ addImage(form.imgMicro,'Micro Localización — Polígono del Predio',90,58) }
-    if(!form.imgMacro && !form.imgMicro){
-      doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-      doc.text('Los croquis se agregan desde la pestaña Carac. Terreno → botones Macro y Micro.',MG,y); y+=5
-      if(form.latitud&&form.longitud){
-        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLUE)
-        doc.text(`Ver en Google Maps: https://maps.google.com/?q=${form.latitud},${form.longitud}`,MG,y); y+=5
-      }
-    }
+    if(form.imgMacro) addImage(form.imgMacro,'Macro Localización — Contexto Urbano General',90,58)
+    if(form.imgMicro) addImage(form.imgMicro,'Micro Localización — Polígono del Predio',90,58)
   } else {
     addPage(); secTit('IV. Localización')
     if(form.latitud&&form.longitud){
@@ -514,8 +539,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   // ═══════════════════════════════════════════
   //  V. FOTOGRAFÍAS
   // ═══════════════════════════════════════════
-  // ── V. Registro Fotográfico del Inmueble ────────────────────
-  // form.fotos ya fue normalizado por convertirImagenes (todos son JPEG strings)
   const fotosFinales = form.fotos||[]
   console.log(`[PDF] Insertando ${fotosFinales.length} fotos del inmueble`)
   if(fotosFinales.length > 0){
@@ -526,52 +549,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     ]
     const leyendasFinal = fotosFinales.map((_,i) => leyendasDefault[i]||`Fotografía ${i+1}`)
     agregarAnexoFotografico(fotosFinales, 'V. Registro Fotográfico del Inmueble', leyendasFinal)
-  }
-
-
-  // ── Ficha individual de comparable ──────────────────────────
-  const fichaComparable = (comp, idx, tipo) => {
-    const supKey = tipo==='casa' ? 'supConst' : 'supM2'
-    const supLabel = tipo==='casa' ? 'Sup. Construida' : 'Superficie'
-    const precioLabel = tipo==='rentas' ? 'Renta/mes' : 'Precio Oferta'
-    checkY(22)
-    const bx=MG, by=y, bh=20
-    doc.setFillColor(...LGRAY); doc.rect(bx,by,CW,bh,'F')
-    doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.rect(bx,by,CW,bh,'S')
-    // Número
-    doc.setFillColor(...NAVY); doc.rect(bx,by,10,bh,'F')
-    doc.setTextColor(...WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(10)
-    doc.text(String(idx+1),bx+5,by+bh/2+1.5,{align:'center'})
-    // Datos principales
-    const fx=bx+12, fw=CW-12
-    doc.setTextColor(...BLACK); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
-    const loc=[comp.ciudad,comp.colonia].filter(Boolean).join(' — ')||'Sin ubicación'
-    doc.text(loc,fx,by+4.5)
-    doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
-    // Precio
-    doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-    doc.text(comp.oferta?fmtM(comp.oferta):'—',PW-MG-2,by+4.5,{align:'right'})
-    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
-    if(comp[supKey]) doc.text(`${comp[supKey]} m²`,PW-MG-2,by+8.5,{align:'right'})
-    // Info contacto
-    doc.setTextColor(...BLACK); doc.setFontSize(6.2)
-    let infoY=by+9
-    if(comp.telefono){doc.setFont('helvetica','bold');doc.text('Tel:',fx,infoY);doc.setFont('helvetica','normal');doc.text(comp.telefono,fx+8,infoY);infoY+=3.5}
-    if(comp.informante){doc.setFont('helvetica','bold');doc.text('Inf:',fx,infoY);doc.setFont('helvetica','normal');doc.text(comp.informante,fx+8,infoY);infoY+=3.5}
-    // Descripción
-    if(comp.descripcion||comp.caracteristicas){
-      const desc=comp.descripcion||comp.caracteristicas||''
-      const dlines=doc.splitTextToSize(desc,fw-30); 
-      doc.setFontSize(6); doc.setTextColor(...DGRAY)
-      doc.text(dlines.slice(0,1),fx,infoY)
-    }
-    // URL
-    if(comp.url){
-      doc.setFont('helvetica','italic'); doc.setFontSize(5.8); doc.setTextColor(37,99,235)
-      const urlText=comp.url.length>70?comp.url.substring(0,70)+'…':comp.url
-      doc.text(urlText,fx,by+bh-1.5)
-    }
-    y+=bh+2
   }
 
   // ═══════════════════════════════════════════
@@ -587,7 +564,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     const areaCH=n(form.areaConstruccionHabitable||form.areaConstruccion)
     const t1=enNRCasa&&areaCH?enNRCasa*areaCH:null
 
-    // Fichas individuales de casa
     subTit('Fichas de Comparables de Casa')
     form.comparablesCasa.filter(c=>c.oferta).forEach((comp,i)=>fichaComparable(comp,i,'casa'))
     y+=3
@@ -596,31 +572,27 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     autoTable(doc,{
       startY:y,margin:{left:MG,right:MG},
       head:[['#','Ciudad','Colonia','Oferta ($)','Sup.','$/m²',...todos.map(f=>f.label),'FRe','$/m² Hom.']],
-      body:[
-        ...form.comparablesCasa.filter(c=>c.oferta).map((c,i)=>{
-          const fre=todos.reduce((a,f)=>a*(parseFloat(c.factores?.[f.key])||1),1)
-          const base=c.oferta&&c.supConst?parseFloat(c.oferta)/parseFloat(c.supConst):0
-          const vu=base*fre
-          return [i+1,c.ciudad||'',c.colonia||'',fmtM(c.oferta),c.supConst||'',
-            base>0?`$${Math.round(base).toLocaleString('es-MX')}`:'—',
-            ...todos.map(f=>fmtN(c.factores?.[f.key]||1,4)),fre.toFixed(4),
-            vu>0?`$${Math.round(vu).toLocaleString('es-MX')}`:'—']
-        }),
-      ],
+      body:form.comparablesCasa.filter(c=>c.oferta).map((c,i)=>{
+        const fre=todos.reduce((a,f)=>a*(parseFloat(c.factores?.[f.key])||1),1)
+        const base=c.oferta&&c.supConst?parseFloat(c.oferta)/parseFloat(c.supConst):0
+        const vu=base*fre
+        return [i+1,c.ciudad||'',c.colonia||'',fmtM(c.oferta),c.supConst||'',
+          base>0?`$${Math.round(base).toLocaleString('es-MX')}`:'—',
+          ...todos.map(f=>fmtN(c.factores?.[f.key]||1,4)),fre.toFixed(4),
+          vu>0?`$${Math.round(vu).toLocaleString('es-MX')}`:'—']
+      }),
       foot:[[{content:'EN N.R. HOMOLOGADO $/m²',colSpan:5+todos.length,styles:{fontStyle:'bold',fillColor:NAVY,textColor:WHITE}},
         '','',{content:enNRCasa?fmtM(enNRCasa):'—',styles:{fontStyle:'bold',fillColor:NAVY,textColor:[201,151,42]}}]],
       headStyles:{fillColor:NAVY,textColor:WHITE,fontSize:5.8,fontStyle:'bold'},
       bodyStyles:{fontSize:5.8},alternateRowStyles:{fillColor:LGRAY},
     })
     y=doc.lastAutoTable.finalY+3
-
     grid3([
       ['EN N.R. $/m²', enNRCasa?fmtM(enNRCasa):'—'],
       ['Área Hab. (m²)', areaCH?`${areaCH} m²`:'—'],
       ['T-1 Valor Total', t1?fmtM(t1):'—'],
     ])
 
-    // Fotos y pantallas de cada comparable de casa
     form.comparablesCasa.filter(c=>c.fotos?.length>0).forEach((comp,idx)=>{
       const loc=[comp.ciudad,comp.colonia].filter(Boolean).join(' — ')
       const titulo=`Anexo Fotográfico — Comparable Casa ${idx+1}${loc?' | '+loc:''}`
@@ -631,15 +603,9 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
         return `${base}${comp.informante?' | '+comp.informante:''}`
       })
       agregarAnexoFotografico(comp.fotos, titulo, leyendas)
-      // URL al pie si existe
-      if(comp.url){
-        checkY(6)
-        doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(37,99,235)
-        doc.text(`Fuente: ${comp.url}`,MG,y); y+=5
-      }
+      if(comp.url){ checkY(6); doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(37,99,235); doc.text(`Fuente: ${comp.url}`,MG,y); y+=5 }
     })
 
-    // Gráfica de barras comparables casa
     if(form.comparablesCasa.filter(c=>c.oferta&&c.supConst).length>1){
       y+=3
       const chartData=form.comparablesCasa.filter(c=>c.oferta&&c.supConst).map((c,i)=>{
@@ -650,7 +616,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       drawBars('COMPARACIÓN $/m² HOMOLOGADO — COMP. CASA',chartData,MG,110)
     }
 
-    // Justificación de factores de homologación
     y+=4; subTit('Justificación de Factores de Homologación')
     const justFactores=[
       ['NEGOCIACIÓN','Factor que a juicio del perito refleja la diferencia entre el precio de oferta y el posible precio de cierre de la operación inmobiliaria, considerando las condiciones de mercado y el tiempo de exposición del inmueble.'],
@@ -671,7 +636,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   }
 
   // ═══════════════════════════════════════════
-  //  VII. ENFOQUE FÍSICO — COMPARABLES TERRENO
+  //  VII. COMPARABLES TERRENO
   // ═══════════════════════════════════════════
   if(form.enfoques?.includes('fisico')&&form.comparablesTerreno?.length){
     addPage()
@@ -683,7 +648,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     const areaT=n(form.areaTerreno)
     const valT=enNRTerr&&areaT?enNRTerr*areaT:null
 
-    // Fichas individuales de terreno
     subTit('Fichas de Comparables de Terreno')
     form.comparablesTerreno.filter(c=>c.oferta).forEach((comp,i)=>fichaComparable(comp,i,'terreno'))
     y+=3
@@ -713,18 +677,13 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       ['Valor Terreno',valT?fmtM(valT):'—'],
     ])
 
-    // Fotos y pantallas de cada comparable de terreno
     form.comparablesTerreno.filter(c=>c.fotos?.length>0).forEach((comp,idx)=>{
       const loc=[comp.ciudad,comp.colonia].filter(Boolean).join(' — ')
       const titulo=`Anexo Fotográfico — Comparable Terreno ${idx+1}${loc?' | '+loc:''}`
       const precio=comp.oferta?fmtM(comp.oferta):''
       const leyendas=comp.fotos.map((_,fi)=>`T${idx+1} Foto ${fi+1}${fi===0?' — Vista principal | '+precio:''}`)
       agregarAnexoFotografico(comp.fotos, titulo, leyendas)
-      if(comp.url){
-        checkY(6)
-        doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(37,99,235)
-        doc.text(`Fuente: ${comp.url}`,MG,y); y+=5
-      }
+      if(comp.url){ checkY(6); doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(37,99,235); doc.text(`Fuente: ${comp.url}`,MG,y); y+=5 }
     })
 
     if(form.comparablesTerreno.filter(c=>c.oferta&&c.supM2).length>1){
@@ -770,7 +729,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     addPage()
     secTit('IX. Enfoque Físico — Costos')
 
-    // a) Terreno
     if(form.fraccionesTerreno?.length){
       subTit('a) Valor del Terreno — Fracciones')
       const enNRTerr=calcEnNR(form.comparablesTerreno,form.factoresTerrenoCustom,'terreno')
@@ -799,7 +757,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       y+=9
     }
 
-    // b) Construcción
     if(form.construcciones?.length){
       y+=2; subTit('b) Valor de Construcción')
       let totalCons=0
@@ -827,7 +784,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       y+=9
     }
 
-    // c) I-Espec
     if(form.instalaciones?.length){
       y+=2; subTit('c) Instalaciones Especiales / I-Espec')
       let totalInst=0
@@ -852,7 +808,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       y+=9
     }
 
-    // Cálculos para total y gráfica
     const totalTerr2=(form.fraccionesTerreno||[]).reduce((acc,f)=>{
       const sup=n(f.sup)||n(form.areaTerreno)
       const vu=n(f.valorUnit)||calcEnNR(form.comparablesTerreno,form.factoresTerrenoCustom,'terreno')||0
@@ -872,7 +827,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     const valorFisico=totalTerr2+totalCons2+totalInst2
 
     if(valorFisico>0){
-      // Total
       y+=2; checkY(10)
       doc.setFillColor(...GOLD); doc.rect(MG,y,CW,9,'F')
       doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8.5)
@@ -880,7 +834,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       doc.text(fmtM(valorFisico),MG+CW-2,y+8,{align:'right'})
       y+=13
 
-      // ── GRÁFICA DE PASTEL (Terreno vs Construcción vs I-Espec) ──
       checkY(80)
       const pieData=[]
       if(totalTerr2>0) pieData.push({label:'Terreno',value:totalTerr2,color:GOLD})
@@ -890,7 +843,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       if(pieData.length>1){
         const pieX=MG+40, pieY=y+35
         drawPie('COMPOSICIÓN DEL VALOR FÍSICO',pieData,pieX,pieY,30)
-        // Tabla resumen al lado de la gráfica
         const tx=MG+100
         doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...NAVY)
         doc.text('DESGLOSE',tx,y+10)
@@ -909,7 +861,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
         doc.setTextColor(...GOLD); doc.text(fmtM(valorFisico),tx+6,ty+7)
         y+=80
       } else {
-        // Solo una barra si hay un solo componente
         drawBars('COMPOSICIÓN DEL VALOR FÍSICO',
           [{label:'Terreno',val:totalTerr2,color:GOLD},{label:'Construcción',val:totalCons2,color:NAVY}],MG,100)
       }
@@ -947,7 +898,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       y=doc.lastAutoTable.finalY+4
     }
 
-    // Deducciones + cascada lado a lado
     y+=2; subTit('Deducciones y Cascada de Renta')
     autoTable(doc,{
       startY:y,margin:{left:MG,right:MG},
@@ -971,10 +921,10 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   }
 
   // ═══════════════════════════════════════════
-  //  VII. DEFINICIONES SHF
+  //  DEFINICIONES SHF
   // ═══════════════════════════════════════════
   addPage()
-  secTit('VII. Definiciones — Marco Teórico (SHF)')
+  secTit('Definiciones — Marco Teórico (SHF)')
   const definiciones=[
     ['VALOR COMERCIAL','Es el precio más probable en el que se podría comercializar un bien inmueble en el mercado en la fecha de valuación, asumiendo que el vendedor y el comprador actúan de manera prudente, sin presiones, con pleno conocimiento del mercado y en libre competencia. (Fuente: SHF — Sociedad Hipotecaria Federal)'],
     ['ENFOQUE DE MERCADO (COMPARATIVO)','Método que determina el valor de un inmueble mediante la comparación directa con inmuebles similares que han sido ofertados o vendidos recientemente en el mismo mercado. Se aplican factores de homologación para ajustar las diferencias entre los comparables y el sujeto.'],
@@ -995,7 +945,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   })
 
   // ═══════════════════════════════════════════
-  //  X-B. DECLARACIONES PROFESIONALES
+  //  DECLARACIONES PROFESIONALES
   // ═══════════════════════════════════════════
   addPage()
   secTit('Declaraciones Profesionales y Advertencias')
@@ -1005,7 +955,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     '3. Los honorarios profesionales son independientes del resultado del avalúo.',
     '4. La información documental proporcionada fue considerada auténtica; el valuador no certifica su autenticidad.',
     '5. El valor determinado corresponde exclusivamente a las condiciones de mercado observadas en la fecha de inspección.',
-    '6. La vigencia del avalúo es de '+( form.vigenciaAvaluo||'seis meses')+' a partir de la fecha de emisión.',
+    '6. La vigencia del avalúo es de '+(form.vigenciaAvaluo||'seis meses')+' a partir de la fecha de emisión.',
     '7. El valuador declara no tener conflicto de interés con las partes involucradas en la operación.',
   ]
   declTexto.forEach(t=>{
@@ -1016,67 +966,85 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   })
 
   // ═══════════════════════════════════════════
-  //  X-C. ANEXO DOCUMENTAL
+  //  ANEXO DOCUMENTAL
+  //  FIX v5: PDFs se fusionan con pdf-lib al final
+  //          Imágenes se insertan directamente
   // ═══════════════════════════════════════════
   const docsAnexos = form.documentosAnexos || []
+  const pdfAnexos  = []  // acumula PDFs para fusión posterior
+
   if(docsAnexos.length > 0){
     addPage()
     secTit('Anexo Documental')
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...DGRAY)
-    doc.text('Los siguientes documentos fueron revisados y forman parte integral del expediente valuatorio.',MG,y); y+=6
+    doc.text('Los siguientes documentos forman parte integral del expediente valuatorio.',MG,y); y+=6
 
     for(const [i,d] of docsAnexos.entries()){
-      addPage()
-      // Encabezado del documento
-      doc.setFillColor(...LGRAY); doc.rect(MG,y,CW,10,'F')
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
-      const safeType = (d.tipo||'Documento').replace(/[^ -~]/g,'?')
-      doc.text(`ANEXO ${i+1} - ${safeType}`, MG+2, y+4)
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-      const safeNombre = (d.nombre||'').replace(/[^ -~]/g,'?')
-      doc.text(safeNombre, MG+2, y+8)
-      if(d.fecha) doc.text(`Fecha de anexo: ${d.fecha}`, PW-MG-2, y+4, {align:'right'})
-      y += 13
+      const esPDF   = d.mimeType === 'application/pdf'
+      const esImagen = d.mimeType?.startsWith('image/')
 
-      // Mostrar contenido si es imagen
-      if(d.data && d.mimeType && d.mimeType.startsWith('image/')){
-        try{
-          // All images were converted to JPEG by convertirImagenes()
-          const maxH = PH - y - MG - 20
-          const imgH = Math.min(maxH, 200)
-          doc.addImage(d.data, 'JPEG', MG, y, CW, imgH, undefined, 'FAST')
-          y += imgH + 5
-        } catch(e){
-          doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-          doc.text('[No se pudo mostrar la imagen]', MG, y); y += 6
-        }
-      } else if(d.data && d.mimeType === 'application/pdf'){
-        // Para PDFs: solo mencionamos que está adjunto (jsPDF no puede renderizar PDFs anidados)
-        checkY(20)
-        doc.setFillColor(235,248,255); doc.rect(MG,y,CW,16,'F')
+      if(esPDF){
+        // Registrar para fusión y mostrar referencia en el índice
+        checkY(22)
+        doc.setFillColor(235,248,255); doc.rect(MG,y,CW,18,'F')
+        doc.setDrawColor(37,99,235); doc.setLineWidth(0.3); doc.rect(MG,y,CW,18,'S')
         doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(37,99,235)
-        doc.text('📄 Documento PDF adjunto al expediente:', MG+3, y+5)
-        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...BLACK)
-        doc.text(d.nombre||'Documento.pdf', MG+3, y+11)
-        y += 19
+        doc.text(`ANEXO ${i+1} — ${(d.tipo||'Documento').toUpperCase()}`, MG+3, y+5)
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
+        doc.text(d.nombre||'Documento.pdf', MG+3, y+10)
+        doc.setFontSize(6.5); doc.setTextColor(...DGRAY)
+        doc.text('Páginas incluidas al final del documento fusionado.', MG+3, y+15)
+        y+=21
+        // Guardar bytes para fusión si están disponibles
+        if(d.bytes) pdfAnexos.push({ nombre: d.nombre||`Anexo-${i+1}.pdf`, bytes: d.bytes })
+        else if(d.data){
+          // Si viene como base64, convertir a ArrayBuffer
+          try {
+            const b64 = d.data.includes(',') ? d.data.split(',')[1] : d.data
+            const binStr = atob(b64)
+            const arr = new Uint8Array(binStr.length)
+            for(let k=0;k<binStr.length;k++) arr[k]=binStr.charCodeAt(k)
+            pdfAnexos.push({ nombre: d.nombre||`Anexo-${i+1}.pdf`, bytes: arr.buffer })
+          } catch(e) { console.warn('[PDF] No se pudo convertir base64 a bytes:', e.message) }
+        }
+      } else if(esImagen && d.data){
+        addPage()
+        doc.setFillColor(...LGRAY); doc.rect(MG,y,CW,8,'F')
+        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+        doc.text(`ANEXO ${i+1} — ${(d.tipo||'Imagen').toUpperCase()}`, MG+2, y+4)
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
+        doc.text(d.nombre||'', MG+2, y+8); y+=13
+        try{
+          const maxH=200
+          doc.addImage(d.data, 'JPEG', MG, y, CW, maxH, undefined, 'FAST')
+          y+=maxH+5
+        }catch(e){
+          doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
+          doc.text('[No se pudo mostrar la imagen]', MG, y); y+=6
+        }
       } else {
+        checkY(10)
         doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-        doc.text(`Documento: ${d.nombre||'sin nombre'} — ver expediente digital`, MG, y); y += 6
+        doc.text(`Documento ${i+1}: ${d.nombre||'sin nombre'} — ver expediente digital`, MG, y); y+=6
       }
     }
   }
 
   // ═══════════════════════════════════════════
   //  XI. CONCLUSIÓN
+  //  FIX v5: valor conclusivo del referido usa valorReferidoFinal
   // ═══════════════════════════════════════════
   addPage()
   secTit('XI. Conclusión del Avalúo')
 
-  // Cuadro comparativo de enfoques
+  const esReferido = (form.tipoAvaluo||'').toLowerCase() === 'referido'
+
   const enfoqueData=[]
-  if(n(form.valorMercado)>0) enfoqueData.push({label:'Valor de Mercado',val:n(form.valorMercado),color:GOLD})
-  if(n(form.valorFisico)>0)  enfoqueData.push({label:'Valor Físico',    val:n(form.valorFisico), color:BLUE})
-  if(n(form.valorRentas)>0)  enfoqueData.push({label:'Por Capitalización de Rentas',val:n(form.valorRentas),color:GREEN})
+  if(n(form.valorMercado)>0) enfoqueData.push({label:'Valor de Mercado',    val:n(form.valorMercado), color:GOLD})
+  if(n(form.valorFisico)>0)  enfoqueData.push({label:'Valor Físico',         val:n(form.valorFisico),  color:BLUE})
+  if(n(form.valorRentas)>0)  enfoqueData.push({label:'Por Cap. de Rentas',   val:n(form.valorRentas),  color:GREEN})
+  if(esReferido && n(form.valorReferidoFinal)>0)
+    enfoqueData.push({label:'Valor Referido Final', val:n(form.valorReferidoFinal), color:GOLD})
 
   if(enfoqueData.length>0){
     subTit('Cuadro Comparativo de Enfoques')
@@ -1088,26 +1056,21 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
         return [e.label,fmtM(e.val),`${Math.round(e.val/maxV*100)}% del mayor`]
       }),
       headStyles:{fillColor:NAVY,textColor:WHITE,fontSize:8,fontStyle:'bold'},
-      bodyStyles:{fontSize:8},alternateRowStyles:{fillColor:LGRAY},
-      tableWidth:120,
+      bodyStyles:{fontSize:8},alternateRowStyles:{fillColor:LGRAY},tableWidth:120,
     })
     y=doc.lastAutoTable.finalY+4
-
-    // ── GRÁFICA DE BARRAS COMPARATIVA DE ENFOQUES ──
-    if(enfoqueData.length>1){
-      checkY(45)
-      drawBars('COMPARACIÓN DE ENFOQUES DE VALUACIÓN',enfoqueData,MG,120)
-      y+=4
-    }
+    if(enfoqueData.length>1){ checkY(45); drawBars('COMPARACIÓN DE ENFOQUES DE VALUACIÓN',enfoqueData,MG,120); y+=4 }
   }
 
-  // Valor conclusivo
-  // Usar el enfoque conclusivo seleccionado por el usuario
+  // *** FIX v5: valor conclusivo correcto para cada tipo ***
   const _enf = form.enfoqueConclusivo||'mercado'
-  const valConc = _enf==='mercado' ? (n(form.valorMercado)||n(form.valorFisico)||n(form.valorRentas))
-    : _enf==='fisico'  ? (n(form.valorFisico)||n(form.valorMercado)||n(form.valorRentas))
-    : _enf==='rentas'  ? (n(form.valorRentas)||n(form.valorMercado)||n(form.valorFisico))
-    : Math.max(n(form.valorMercado)||0, n(form.valorFisico)||0, n(form.valorRentas)||0) || 0
+  const valConc = esReferido
+    ? (n(form.valorReferidoFinal) || n(form.valorMercado) || 0)
+    : _enf==='fisico'  ? (n(form.valorFisico)  || n(form.valorMercado) || n(form.valorRentas))
+    : _enf==='rentas'  ? (n(form.valorRentas)  || n(form.valorMercado) || n(form.valorFisico))
+    : _enf==='mayor'   ? Math.max(n(form.valorMercado)||0, n(form.valorFisico)||0, n(form.valorRentas)||0)
+    :                    (n(form.valorMercado)  || n(form.valorFisico)  || n(form.valorRentas))
+
   if(valConc>0){
     checkY(20)
     doc.setFillColor(...NAVY); doc.rect(MG,y,CW,16,'F')
@@ -1116,14 +1079,15 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     doc.setFontSize(13); doc.text(fmtM(valConc),MG+3,y+14)
     doc.setTextColor(180,200,220); doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
     doc.text(`Vigencia: ${form.vigenciaAvaluo||'—'}`,PW-MG-2,y+6,{align:'right'})
-    const enfNombre=form.enfoqueConclusivo==='mayor'?'Mayor de los enfoques'
-      :(form.enfoqueConclusivo==='mercado'?'Enfoque de Mercado'
-      :(form.enfoqueConclusivo==='fisico'?'Enfoque Físico':'Capitalización de Rentas'))
+    const enfNombre = esReferido ? 'Valor Referido Final'
+      : _enf==='mayor' ? 'Mayor de los enfoques'
+      : _enf==='mercado' ? 'Enfoque de Mercado'
+      : _enf==='fisico'  ? 'Enfoque Físico'
+      : 'Capitalización de Rentas'
     doc.text(`Enfoque: ${enfNombre}`,PW-MG-2,y+12,{align:'right'})
     y+=19
   }
 
-  // Letras
   if(form.valorConclusivoLetras){
     checkY(12)
     doc.setFillColor(...LGRAY); doc.setDrawColor(...NAVY); doc.setLineWidth(0.25)
@@ -1136,7 +1100,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     y+=12
   }
 
-  // Declaración
   if(form.declaraciones){
     checkY(10); y+=2
     doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...NAVY)
@@ -1156,15 +1119,16 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.text(`Cédula: ${form.cedulaProfesional||'—'}   Reg. SHF: ${form.noRegSHF||'—'}`,PW/2,y,{align:'center'})
   if(form.regEstatalPeritos){ y+=4; doc.text(`Reg. Estatal: ${form.regEstatalPeritos}`,PW/2,y,{align:'center'}) }
 
-  // ── Valor conclusivo en portada (página 1) ──────────────────
-  const valConclPortada=n(form.valorMercado)||n(form.valorFisico)||n(form.valorRentas)
+  // *** FIX v5: portada también usa valorReferidoFinal ***
+  const valConclPortada = esReferido
+    ? (n(form.valorReferidoFinal) || n(form.valorMercado) || 0)
+    : (n(form.valorMercado) || n(form.valorFisico) || n(form.valorRentas))
   if(valConclPortada>0){
     doc.setPage(1)
-    // Bloque dorado al pie de la portada
     const pyBox=248
     doc.setFillColor(...GOLD); doc.rect(MG,pyBox,CW,22,'F')
     doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-    doc.text('VALOR COMERCIAL DEL INMUEBLE:',PW/2,pyBox+5,{align:'center'})
+    doc.text('VALOR CONCLUSIVO DEL INMUEBLE:',PW/2,pyBox+5,{align:'center'})
     doc.setFontSize(16); doc.text(fmtM(valConclPortada),PW/2,pyBox+14,{align:'center'})
     if(form.valorConclusivoLetras){
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(50,40,20)
@@ -1173,7 +1137,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     }
   }
 
-  // Pie de página
+  // Pie de página en todas las hojas
   const total=doc.getNumberOfPages()
   for(let i=1;i<=total;i++){
     doc.setPage(i)
@@ -1184,13 +1148,30 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     doc.text(form.peritoValuador||'',PW-MG,282,{align:'right'})
   }
 
+  // ── DESCARGA: fusionar si hay PDFs anexos, descargar directo si no ──
   const folio=(form.folioInterno||'avaluo').replace(/[^a-zA-Z0-9\-_]/g,'_')
-  doc.save(`${folio}_avaluo.pdf`)
+
+  if(pdfAnexos.length > 0){
+    console.log(`[PDF] Fusionando ${pdfAnexos.length} PDF(s) con pdf-lib…`)
+    const mainBytes = doc.output('arraybuffer')
+    const blob = await fusionarPDFs(mainBytes, pdfAnexos)
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${folio}_avaluo_completo.pdf`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    console.log('[PDF] PDF fusionado descargado.')
+  } else {
+    doc.save(`${folio}_avaluo.pdf`)
+  }
 }
 
 
 // ══════════════════════════════════════════════════════════════════
-//  EXCEL
+//  EXCEL — idéntico al v4 + hoja 9 incluye valorReferidoFinal
 // ══════════════════════════════════════════════════════════════════
 export async function exportarExcel(form, avaluoMeta={}) {
   const XLSX = await import('xlsx')
@@ -1206,101 +1187,63 @@ export async function exportarExcel(form, avaluoMeta={}) {
     return ws
   }
 
-  // ── Hoja 1: Datos Generales ────────────────────────────────────
   const ws1=mkSheet([
     H1('GIAVAL — AVALÚO COMERCIAL'),
-    [],
-    H2('DATOS DEL AVALÚO'),
-    ['Folio:', form.folioInterno||''],
-    ['Fecha:', form.fechaAvaluo||''],
-    ['Tipo de Avalúo:', form.tipoAvaluo||''],
-    ['Propósito:', form.proposito||''],
-    ['Vigencia:', form.vigenciaAvaluo||''],
-    ['Solicitante:', form.nombreSolicitante||''],
-    ['Propietario:', form.nombrePropietario||''],
-    ['Bien Valuado:', form.bienQueSeValua||''],
+    [],H2('DATOS DEL AVALÚO'),
+    ['Folio:', form.folioInterno||''],['Fecha:', form.fechaAvaluo||''],
+    ['Tipo de Avalúo:', form.tipoAvaluo||''],['Propósito:', form.proposito||''],
+    ['Vigencia:', form.vigenciaAvaluo||''],['Solicitante:', form.nombreSolicitante||''],
+    ['Propietario:', form.nombrePropietario||''],['Bien Valuado:', form.bienQueSeValua||''],
     ['Régimen:', form.regimenPropiedad||''],
-    [],
-    H2('PERITO VALUADOR'),
-    ['Nombre:', form.peritoValuador||''],
-    ['Maestría:', form.maestria||''],
-    ['Cédula Profesional:', form.cedulaProfesional||''],
-    ['Reg. SHF:', form.noRegSHF||''],
+    [],H2('PERITO VALUADOR'),
+    ['Nombre:', form.peritoValuador||''],['Maestría:', form.maestria||''],
+    ['Cédula Profesional:', form.cedulaProfesional||''],['Reg. SHF:', form.noRegSHF||''],
     ['Reg. Estatal:', form.regEstatalPeritos||''],
-    [],
-    H2('DIRECCIÓN DEL INMUEBLE'),
-    ['Calle:', form.calle||''],
-    ['Núm. Exterior:', form.numeroExterior||''],
-    ['Núm. Interior:', form.numeroInterior||''],
-    ['Colonia:', form.colonia||''],
-    ['Manzana:', form.manzana||''],
-    ['Lote:', form.lote||''],
-    ['Código Postal:', form.codigoPostal||''],
-    ['Municipio:', form.municipio||''],
-    ['Estado:', form.entidadFederativa||''],
-    ['Cuenta Predial:', form.cuentaPredial||''],
-    ['Latitud:', form.latitud||''],
-    ['Longitud:', form.longitud||''],
-    ['Altitud:', form.altitud||''],
-    [],
-    H2('CARACTERÍSTICAS URBANAS'),
+    [],H2('DIRECCIÓN DEL INMUEBLE'),
+    ['Calle:', form.calle||''],['Núm. Exterior:', form.numeroExterior||''],
+    ['Núm. Interior:', form.numeroInterior||''],['Colonia:', form.colonia||''],
+    ['Manzana:', form.manzana||''],['Lote:', form.lote||''],
+    ['Código Postal:', form.codigoPostal||''],['Municipio:', form.municipio||''],
+    ['Estado:', form.entidadFederativa||''],['Cuenta Predial:', form.cuentaPredial||''],
+    ['Latitud:', form.latitud||''],['Longitud:', form.longitud||''],['Altitud:', form.altitud||''],
+    [],H2('CARACTERÍSTICAS URBANAS'),
     ['Nivel Infraestructura:', form.nivelInfraestructura||''],
-    ['Agua Potable:', form.aguaPotable||''],
-    ['Drenaje:', form.drenaje||''],
-    ['Electrificación:', form.electrificacion||''],
-    ['Alumbrado:', form.alumbradoPublico||''],
-    ['Telefonía:', form.telefono||''],
-    ['Señalización:', form.senalizacion||''],
-    ['Transporte Público:', form.transportePublico||''],
-    ['Vigilancia:', form.vigilancia||''],
+    ['Agua Potable:', form.aguaPotable||''],['Drenaje:', form.drenaje||''],
+    ['Electrificación:', form.electrificacion||''],['Alumbrado:', form.alumbradoPublico||''],
+    ['Telefonía:', form.telefono||''],['Señalización:', form.senalizacion||''],
+    ['Transporte Público:', form.transportePublico||''],['Vigilancia:', form.vigilancia||''],
     ['Nivel Equipamiento:', form.nivelEquipamiento||''],
-    ['Clasificación Zona:', form.clasificacionZona||''],
-    ['Uso de Suelo:', form.usoSuelo||''],
+    ['Clasificación Zona:', form.clasificacionZona||''],['Uso de Suelo:', form.usoSuelo||''],
     ['Proximidad Urbana:', form.refProximidadUrbana||''],
     ['Vías de Acceso:', form.viasAcceso||''],
     ['Construcc. Predominantes:', form.construccionesPredominantes||''],
-    [],
-    H2('MEDIDAS Y COLINDANCIAS'),
+    [],H2('MEDIDAS Y COLINDANCIAS'),
     ['Área Terreno (m²):', form.areaTerreno||''],
     ['Área Constr. Habitable (m²):', form.areaConstruccionHabitable||''],
-    ['Indiviso (%):', form.indiviso||''],
-    ['Topografía:', form.topografia||''],
-    ['Núm. de Frentes:', form.numeroFrente||''],
-    ['Servidumbres:', form.servidumbre||''],
-    [],
-    H2('DATOS DE LA ESCRITURA'),
-    ['Notario:', form.notarioNombre||''],
-    ['Núm. Notaría:', form.numeroNotario||''],
-    ['Ciudad Notario:', form.notarioCiudad||''],
-    ['Núm. Escritura:', form.numeroEscritura||''],
+    ['Indiviso (%):', form.indiviso||''],['Topografía:', form.topografia||''],
+    ['Núm. de Frentes:', form.numeroFrente||''],['Servidumbres:', form.servidumbre||''],
+    [],H2('DATOS DE LA ESCRITURA'),
+    ['Notario:', form.notarioNombre||''],['Núm. Notaría:', form.numeroNotario||''],
+    ['Ciudad Notario:', form.notarioCiudad||''],['Núm. Escritura:', form.numeroEscritura||''],
     ['Fecha Escritura:', form.fechaEscritura||''],
-    [],
-    H2('DESCRIPCIÓN DEL INMUEBLE'),
-    ['Tipo Construcción:', form.tiposConstruccion||''],
-    ['Calidad:', form.calidadClasificacion||''],
+    [],H2('DESCRIPCIÓN DEL INMUEBLE'),
+    ['Tipo Construcción:', form.tiposConstruccion||''],['Calidad:', form.calidadClasificacion||''],
     ['Nº de Niveles:', form.numNiveles!=null?String(form.numNiveles):''],
-    ['Edad Aprox. (años):', form.edadAproximada||''],
-    ['Vida Total (años):', form.vidaTotal||''],
+    ['Edad Aprox. (años):', form.edadAproximada||''],['Vida Total (años):', form.vidaTotal||''],
     ['Vida Remanente:', (form.vidaTotal&&form.edadAproximada)?String(n(form.vidaTotal)-n(form.edadAproximada)):''],
     ['Estado Conservación:', form.estadoConservacion||''],
-    ['Calidad del Proyecto:', form.calidadProyecto||''],
-    ['Uso Actual:', form.usoActual||''],
-    ['Recámaras:', form.numRecamaras||''],
-    ['Baños Completos:', form.numBanosCompletos||''],
-    ['Medios Baños:', form.numMediosBanos||''],
-    ['Estacionamientos:', form.estacionamientos||''],
-    ['Elevador:', form.elevador||''],
-    ['Cocinas:', form.numCocina||''],
-    ['Estructura:', form.estructura||''],
-    ['Hidráulica:', form.hidraulico||''],
-    ['Eléctrica:', form.electrico||''],
-    ['Carpintería:', form.carpinteria||''],
+    ['Calidad del Proyecto:', form.calidadProyecto||''],['Uso Actual:', form.usoActual||''],
+    ['Recámaras:', form.numRecamaras||''],['Baños Completos:', form.numBanosCompletos||''],
+    ['Medios Baños:', form.numMediosBanos||''],['Estacionamientos:', form.estacionamientos||''],
+    ['Elevador:', form.elevador||''],['Cocinas:', form.numCocina||''],
+    ['Estructura:', form.estructura||''],['Hidráulica:', form.hidraulico||''],
+    ['Eléctrica:', form.electrico||''],['Carpintería:', form.carpinteria||''],
     ['Herrería:', form.herreria||''],
-    [],
-    H2('VALORES DEL AVALÚO'),
+    [],H2('VALORES DEL AVALÚO'),
     ['Valor de Mercado:', n(form.valorMercado)||''],
     ['Valor Físico:', n(form.valorFisico)||''],
     ['Valor por Rentas:', n(form.valorRentas)||''],
+    ['Valor Referido Final:', n(form.valorReferidoFinal)||''],
     ['Enfoque Conclusivo:', form.enfoqueConclusivo||''],
     ['Declaración:', form.declaraciones||''],
     ['Valor en Letras:', form.valorConclusivoLetras||''],
@@ -1308,7 +1251,6 @@ export async function exportarExcel(form, avaluoMeta={}) {
   ],'01-Datos Generales')
   ws1['!cols']=[{wch:35},{wch:75}]
 
-  // ── Hoja 2: Medidas y Colindancias ─────────────────────────────
   if(form.medidas?.length){
     const ws2=mkSheet([
       H1('MEDIDAS Y COLINDANCIAS'),
@@ -1322,18 +1264,15 @@ export async function exportarExcel(form, avaluoMeta={}) {
     ws2['!cols']=[{wch:18},{wch:16},{wch:60}]
   }
 
-  // ── Hoja 3: Acabados ──────────────────────────────────────────
   if(form.acabados?.length){
     const ws3=mkSheet([
-      H1('TABLA DE ACABADOS POR ESPACIO'),
-      [],
+      H1('TABLA DE ACABADOS POR ESPACIO'),[],
       [TH('Espacio'),TH('Piso'),TH('Muro'),TH('Plafón')],
       ...form.acabados.map(a=>[a.espacio||'',a.piso||'',a.muro||'',a.plafon||'']),
     ],'03-Acabados')
     ws3['!cols']=[{wch:22},{wch:42},{wch:42},{wch:42}]
   }
 
-  // ── Hoja 4: Comparables Casa ──────────────────────────────────
   if(form.comparablesCasa?.length){
     const customF=form.factoresCasaCustom||[]
     const baseKeys=['neg','ubic','sup','calid','edoCons','zona']
@@ -1341,8 +1280,7 @@ export async function exportarExcel(form, avaluoMeta={}) {
     const enNRCasa=calcEnNR(form.comparablesCasa,customF,'casa')
     const areaCH=n(form.areaConstruccionHabitable||form.areaConstruccion)
     const ws4=mkSheet([
-      H1('ENFOQUE DE MERCADO — COMPARABLES CASA'),
-      [],
+      H1('ENFOQUE DE MERCADO — COMPARABLES CASA'),[],
       [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Oferta ($)'),TH('Sup.Const. m²'),TH('$/m² Base'),
         ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
       ...form.comparablesCasa.filter(c=>c.oferta).map((c,i)=>{
@@ -1352,15 +1290,12 @@ export async function exportarExcel(form, avaluoMeta={}) {
           parseFloat(base.toFixed(2)),...todos.map(f=>parseFloat((parseFloat(c.factores?.[f.key]||1)).toFixed(4))),
           parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
       }),
-      [],
-      [TG('EN N.R. $/m²'),enNRCasa||0,'',TG('ÁREA HAB. m²'),areaCH||0],
+      [],[TG('EN N.R. $/m²'),enNRCasa||0,'',TG('ÁREA HAB. m²'),areaCH||0],
       [TG('T-1 VALOR TOTAL'),enNRCasa&&areaCH?parseFloat((enNRCasa*areaCH).toFixed(2)):0],
     ],'04-Comp. Casa')
-    ws4['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},
-      ...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
+    ws4['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
   }
 
-  // ── Hoja 5: Comparables Terreno ───────────────────────────────
   if(form.comparablesTerreno?.length){
     const customF=form.factoresTerrenoCustom||[]
     const baseKeys=['neg','zona','ubica','frente','sup','forma']
@@ -1368,8 +1303,7 @@ export async function exportarExcel(form, avaluoMeta={}) {
     const enNRTerr=calcEnNR(form.comparablesTerreno,customF,'terreno')
     const areaT=n(form.areaTerreno)
     const ws5=mkSheet([
-      H1('ENFOQUE FÍSICO — COMPARABLES TERRENO'),
-      [],
+      H1('ENFOQUE FÍSICO — COMPARABLES TERRENO'),[],
       [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Oferta ($)'),TH('Sup. m²'),TH('$/m² Base'),
         ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
       ...form.comparablesTerreno.filter(c=>c.oferta).map((c,i)=>{
@@ -1379,22 +1313,18 @@ export async function exportarExcel(form, avaluoMeta={}) {
           parseFloat(base.toFixed(2)),...todos.map(f=>parseFloat((parseFloat(c.factores?.[f.key]||1)).toFixed(4))),
           parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
       }),
-      [],
-      [TG('EN N.R. $/m²'),enNRTerr||0,'',TG('ÁREA TERRENO m²'),areaT||0],
+      [],[TG('EN N.R. $/m²'),enNRTerr||0,'',TG('ÁREA TERRENO m²'),areaT||0],
       [TG('VALOR TERRENO'),enNRTerr&&areaT?parseFloat((enNRTerr*areaT).toFixed(2)):0],
     ],'05-Comp. Terreno')
-    ws5['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},
-      ...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
+    ws5['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
   }
 
-  // ── Hoja 6: Mercado Rentas ────────────────────────────────────
   if(form.comparablesRentas?.length){
     const customF=form.factoresRentasCustom||[]
     const baseKeys=['neg','ubic','sup','calid','edoCons']
     const todos=[...baseKeys.map(k=>({key:k,label:k.toUpperCase()})),...customF.map(f=>({key:f.key,label:f.label}))]
     const ws6=mkSheet([
-      H1('MERCADO DE RENTAS — COMPARABLES'),
-      [],
+      H1('MERCADO DE RENTAS — COMPARABLES'),[],
       [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Renta/mes ($)'),TH('Sup. m²'),TH('$/m²/mes'),
         ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
       ...form.comparablesRentas.filter(c=>c.oferta).map((c,i)=>{
@@ -1405,12 +1335,10 @@ export async function exportarExcel(form, avaluoMeta={}) {
           parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
       }),
     ],'06-Mercado Rentas')
-    ws6['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},
-      ...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
+    ws6['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
   }
 
-  // ── Hoja 7: Costos ────────────────────────────────────────────
-  const costRows=[H1('COSTOS — ENFOQUE FÍSICO'),]
+  const costRows=[H1('COSTOS — ENFOQUE FÍSICO')]
   const enNRTerr=calcEnNR(form.comparablesTerreno,form.factoresTerrenoCustom,'terreno')
   const indiv=n(form.indiviso)/100||1
   let totalTerr=0,totalCons=0,totalInst=0
@@ -1459,7 +1387,6 @@ export async function exportarExcel(form, avaluoMeta={}) {
     ws7['!cols']=[{wch:12},{wch:25},{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:12},{wch:14}]
   }
 
-  // ── Hoja 8: Ingresos ──────────────────────────────────────────
   if(form.ingresos){
     const ing=form.ingresos
     const deducKeys=['porcVacios','porcPredial','porcAgua','porcConsManto','porcAdmon','porcEnergElec','porcSeguros','porcISR','porcOtros']
@@ -1483,17 +1410,19 @@ export async function exportarExcel(form, avaluoMeta={}) {
       ...deducKeys.map((k,i)=>[deducLabels[i],n(ing[k])]),
       [TG('TOTAL DEDUCCIONES'),totalDeducc],[],
       H2('CASCADA DE RENTA'),
-      ['Renta Bruta Mensual',rentaBruta],
-      ['Total Deducciones (importe)',deduccImp],
-      ['Renta Neta Mensual',rentaNetaMens],
-      [`Renta Neta Anual (× ${mult} meses)`,rentaNetaAnual],
+      ['Renta Bruta Mensual',rentaBruta],['Total Deducciones (importe)',deduccImp],
+      ['Renta Neta Mensual',rentaNetaMens],[`Renta Neta Anual (× ${mult} meses)`,rentaNetaAnual],
       [`Tasa de Capitalización`,tasa],
       [TG('VALOR POR CAPITALIZACIÓN'),valorRentas||n(form.valorRentas)],
     ],'08-Ingresos')
     ws8['!cols']=[{wch:40},{wch:20},{wch:15},{wch:15},{wch:18}]
   }
 
-  // ── Hoja 9: Conclusión ────────────────────────────────────────
+  // Hoja 9: Conclusión — FIX v5: incluye valorReferidoFinal
+  const esRef = (form.tipoAvaluo||'').toLowerCase()==='referido'
+  const valConclExcel = esRef
+    ? (n(form.valorReferidoFinal)||n(form.valorMercado)||0)
+    : (n(form.valorMercado)||n(form.valorFisico)||n(form.valorRentas))
   const ws9=mkSheet([
     H1('CONCLUSIÓN DEL AVALÚO'),[],
     H2('CUADRO COMPARATIVO DE ENFOQUES'),
@@ -1502,24 +1431,22 @@ export async function exportarExcel(form, avaluoMeta={}) {
       ['Valor de Mercado',n(form.valorMercado)],
       ['Valor Físico',n(form.valorFisico)],
       ['Valor por Capitalización de Rentas',n(form.valorRentas)],
+      ['Valor Referido Final',n(form.valorReferidoFinal)],
     ].filter(([,v])=>v>0).map(([l,v])=>{
-      const maxV=Math.max(n(form.valorMercado),n(form.valorFisico),n(form.valorRentas))
+      const maxV=Math.max(n(form.valorMercado),n(form.valorFisico),n(form.valorRentas),n(form.valorReferidoFinal))
       return [l,v,parseFloat((v/maxV*100).toFixed(1))]
     }),
-    [],
-    H2('CONCLUSIÓN'),
-    ['Enfoque Conclusivo:', form.enfoqueConclusivo||''],
-    ['Declaración:', form.declaraciones||''],
-    ['Valor Conclusivo ($):', n(form.valorMercado)||n(form.valorFisico)||n(form.valorRentas)],
+    [],H2('CONCLUSIÓN'),
+    ['Tipo de Avalúo:', form.tipoAvaluo||''],
+    ['Enfoque Conclusivo:', esRef?'Valor Referido Final':(form.enfoqueConclusivo||'')],
+    ['Valor Conclusivo ($):', valConclExcel],
     ['Valor en Letras:', form.valorConclusivoLetras||''],
+    ['Declaración:', form.declaraciones||''],
     ['Vigencia:', form.vigenciaAvaluo||''],
     ['Fecha:', form.fechaAvaluo||''],
-    [],
-    H2('PERITO VALUADOR'),
-    ['Nombre:', form.peritoValuador||''],
-    ['Maestría:', form.maestria||''],
-    ['Cédula:', form.cedulaProfesional||''],
-    ['Reg. SHF:', form.noRegSHF||''],
+    [],H2('PERITO VALUADOR'),
+    ['Nombre:', form.peritoValuador||''],['Maestría:', form.maestria||''],
+    ['Cédula:', form.cedulaProfesional||''],['Reg. SHF:', form.noRegSHF||''],
     ['Reg. Estatal:', form.regEstatalPeritos||''],
   ],'09-Conclusión')
   ws9['!cols']=[{wch:38},{wch:22},{wch:15}]
