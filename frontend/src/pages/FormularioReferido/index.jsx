@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Save, Download, CheckCircle2,
+  ArrowLeft, Save, Download, CheckCircle2, ScrollText,
   Home, FileText, Map, Building, BarChart2,
   DollarSign, TrendingDown, Camera, ClipboardList,
   FileSpreadsheet,
@@ -35,6 +35,8 @@ import TabFotos             from '../FormularioComercial/tabs/TabFotos'
 import TabDatosReferido    from './tabs/TabDatosReferido'
 import TabValorReferido    from './tabs/TabValorReferido'
 import TabConclusionReferido from './tabs/TabConclusionReferido'
+import TabDeclaraciones from '../FormularioComercial/tabs/TabDeclaraciones'
+
 
 import styles from '../FormularioComercial/Formulario.module.css'
 
@@ -130,6 +132,8 @@ const FORM_VACIO = {
   declaraciones:'SE CONCLUYE CON EL VALOR FÍSICO DEL INMUEBLE',
   vigenciaAvaluo:'Seis Meses',
   fotos:[],
+  declaracionesExtra: [''],
+  declaracionFija: '',
 }
 
 // ── Tabs del Referido ────────────────────────────────────────────
@@ -144,6 +148,7 @@ const TABS_BASE = [
   { key:'conclusion', label:'Conclusión',       Icon: ClipboardList},
   { key:'valorRef',   label:'Valor Referido',   Icon: TrendingDown },
   { key:'fotos',      label:'Fotos',            Icon: Camera       },
+  { key:'declaraciones', label:'Declaraciones', Icon: ScrollText },
 ]
 
 // ── Componente principal ─────────────────────────────────────────
@@ -225,15 +230,21 @@ export default function FormularioReferido() {
   const handleExport = async (tipo) => {
     setExportMenu(false)
     try {
-      if (tipo==='pdf') {
+      // avaluoMeta pasa el valor_conclusivo de la BD como respaldo
+      // por si valorReferidoFinal no está en el formData en memoria
+      const meta = {
+        valor_conclusivo: parseFloat(form.valorReferidoFinal || form.valorFisico || form.valorMercado) || null
+      }
+      if (tipo === 'pdf') {
         const { exportarPDF } = await import('../../utils/exportAvaluo')
-        await exportarPDF(form,'referido')
+        await exportarPDF(form, meta)
       } else {
         const { exportarExcel } = await import('../../utils/exportAvaluo')
-        await exportarExcel(form,'referido')
+        await exportarExcel(form, meta)
       }
-    } catch(e){ console.error(e) }
+    } catch(e) { console.error(e) }
   }
+
 
   const aplicarCamposIA = (campos) => setForm(f=>({...f,...campos}))
 
@@ -261,6 +272,7 @@ export default function FormularioReferido() {
       case 'valorRef':   return <TabValorReferido    {...tabProps}/>
       case 'conclusion': return <TabConclusionReferido{...tabProps}/>
       case 'fotos':      return <TabFotos            {...tabProps}/>
+      case 'declaraciones': return <TabDeclaraciones {...tabProps}/>
       default:           return null
     }
   }

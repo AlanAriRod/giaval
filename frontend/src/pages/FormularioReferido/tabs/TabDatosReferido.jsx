@@ -532,7 +532,7 @@ export default function TabDatosReferido({ form, update }) {
               <label className={styles.label}>Señalización</label>
               <select className={styles.select} value={form.senalizacion||''}
                 onChange={e=>update('senalizacion',e.target.value)}>
-                {['COMPLETA','INCOMPLETA','SIN SEÑALIZACIÓN'].map(o=><option key={o}>{o}</option>)}
+                {['EXISTE','SIN SEÑALIZACIÓN'].map(o=><option key={o}>{o}</option>)}
               </select>
             </div>
 

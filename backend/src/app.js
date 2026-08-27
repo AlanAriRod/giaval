@@ -7,7 +7,7 @@ const avaluoRoutes = require('./routes/avaluoRoutes')
 const adminRoutes  = require('./routes/adminRoutes')
 const aiRoutes  = require('./routes/ai')
 const comparablesRoutes = require('./routes/comparables')
-
+const mapRoutes = require('./routes/mapRoutes')
 const ocrRoutes = require('./routes/ocr')
 
 const app  = express()
@@ -27,6 +27,7 @@ app.use('/api/admin',   adminRoutes)
 app.use('/api/ocr', ocrRoutes)
 app.use('/api/ai',  aiRoutes)
 app.use('/api/comparables', comparablesRoutes)
+app.use('/api/mapa', mapRoutes)
 
 // ── Health check ───────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {

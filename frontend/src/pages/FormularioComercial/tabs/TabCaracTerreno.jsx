@@ -82,42 +82,58 @@ function MapaSlot({ campo, label, lat, lon, form, update }) {
   const googleUrl = tieneCoord ? `https://maps.google.com/?q=${lat},${lon}&z=${zoom}` : null
   const croquisFijado = form[campo]
 
-  // Fijar: genera URL del mapa estático y lo convierte a JPEG via Canvas
+  // Fijar: pide al backend que descargue la imagen del mapa
+  // El backend actúa como proxy evitando el bloqueo CORS del navegador
   const fijarMapa = async () => {
     if (!tieneCoord) return
     setFijando(true)
-    // API estática de tiles de OSM — funciona sin CORS
-    const size = 640
-    const urlStatic = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=${size}x480&markers=${lat},${lon},red-pushpin`
-    const tryLoad = (url) => new Promise((res, rej) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.naturalWidth||size; canvas.height = img.naturalHeight||480
-          const ctx = canvas.getContext('2d')
-          ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height)
-          ctx.drawImage(img,0,0)
-          res(canvas.toDataURL('image/jpeg',0.88))
-        } catch(e){ rej(e) }
-      }
-      img.onerror = () => rej(new Error('No cargó'))
-      img.src = url
-    })
     try {
-      const jpeg = await tryLoad(urlStatic)
-      update(campo, jpeg)
-    } catch {
-      // Si el proveedor falla, indicar que capture pantalla manualmente
-      alert(
-        'La captura automática no está disponible en este momento.\n\n' +
-        'ALTERNATIVA RÁPIDA:\n' +
-        '1. Haz clic en "Abrir en Google Maps" abajo\n' +
-        '2. Ajusta el zoom a nivel "' + zInfo.label + '" (' + zInfo.radio + ')\n' +
-        '3. Toma una captura de pantalla (Win+Shift+S en Windows)\n' +
-        '4. Súbela con el botón "Subir imagen de croquis"'
+      const token = localStorage.getItem('giaval_token')
+      const res = await fetch(
+        `/api/mapa/estatico?lat=${lat}&lon=${lon}&zoom=${zoom}&size=640`,
+        { headers: { Authorization: `Bearer ${token}` } }
       )
+      const data = await res.json()
+      if (data.ok && data.imagen) {
+        update(campo, data.imagen)
+      } else {
+        throw new Error(data.error || 'Sin imagen')
+      }
+    } catch (err) {
+      console.warn('[Mapa] Backend falló:', err.message)
+      // Fallback: intentar carga directa (puede funcionar en algunos navegadores)
+      const size = 640
+      const urlStatic = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=${size}x480&markers=${lat},${lon},red-pushpin`
+      const tryLoad = (url) => new Promise((res, rej) => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            canvas.width = img.naturalWidth || size
+            canvas.height = img.naturalHeight || 480
+            const ctx = canvas.getContext('2d')
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+            ctx.drawImage(img, 0, 0)
+            res(canvas.toDataURL('image/jpeg', 0.88))
+          } catch(e){ rej(e) }
+        }
+        img.onerror = () => rej(new Error('No cargó'))
+        img.src = url
+      })
+      try {
+        const jpeg = await tryLoad(urlStatic)
+        update(campo, jpeg)
+      } catch {
+        alert(
+          'La captura automática no está disponible.\n\n' +
+          'ALTERNATIVA RÁPIDA:\n' +
+          '1. Haz clic en "Abrir en Google Maps" abajo\n' +
+          '2. Ajusta el zoom: ' + zInfo.label + ' (' + zInfo.radio + ')\n' +
+          '3. Captura pantalla con Win+Shift+S\n' +
+          '4. Sube la imagen con el botón "Subir imagen de croquis"'
+        )
+      }
     }
     setFijando(false)
   }

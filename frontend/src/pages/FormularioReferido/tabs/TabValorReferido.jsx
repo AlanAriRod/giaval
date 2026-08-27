@@ -470,7 +470,7 @@ export default function TabValorReferido({ form, update, avaluoId }) {
           )}
           {(form.mesReferido||form.fechaAvaluoReferido) && (
             <p style={{fontSize:'.76rem',color:'#475569',marginTop:'.5rem'}}>
-              Retrotraído a:{' '}
+              Refernciado a:{' '}
               <strong style={{color:'#94a3b8'}}>
                 {labelInpcRef || form.fechaAvaluoReferido}
               </strong>

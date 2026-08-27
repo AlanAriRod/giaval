@@ -136,6 +136,9 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   const PW=215.9, MG=13, CW=PW-MG*2
   let y=0, pageNum=0
 
+  // Detectar tipo UNA VEZ al inicio — funciona con 'referido', 'Referido', 'Avalúo Referido'
+  const esReferido = (form.tipoAvaluo||'').toLowerCase().includes('referido')
+
   const NAVY=[30,58,95],GOLD=[201,151,42],LGRAY=[241,245,249],
         MGRAY=[226,232,240],DGRAY=[100,116,139],WHITE=[255,255,255],
         BLACK=[15,23,42],RED=[220,38,38],GREEN=[22,163,74],BLUE=[37,99,235]
@@ -145,7 +148,8 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     doc.addPage(); pageNum++
     doc.setFillColor(...NAVY); doc.rect(0,0,PW,12,'F')
     doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(7)
-    doc.text('GIAVAL — AVALÚO COMERCIAL', MG, 5)
+    const tipoLabel = esReferido ? 'AVALÚO REFERIDO' : 'AVALÚO COMERCIAL'
+    doc.text(`GIAVAL — ${tipoLabel}`, MG, 5)
     doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(200,200,200)
     doc.text(form.folioInterno||'', MG, 10)
     doc.text(form.fechaAvaluo||'', PW-MG, 10, {align:'right'})
@@ -349,7 +353,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   pageNum=1
   doc.setFillColor(...NAVY); doc.rect(0,0,PW,12,'F')
   doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
-  doc.text('GIAVAL — AVALÚO COMERCIAL', MG,5)
+  doc.text(`GIAVAL — ${esReferido ? 'AVALÚO REFERIDO' : 'AVALÚO COMERCIAL'}`, MG, 5)
   doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(200,200,200)
   doc.text(form.folioInterno||'',MG,10)
   doc.text(form.fechaAvaluo||'',PW-MG,10,{align:'right'})
@@ -366,7 +370,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
 
   doc.setFillColor(...GOLD); doc.rect(MG,y,CW,9,'F')
   doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(10)
-  doc.text((form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase(),PW/2,y+6.5,{align:'center'})
+  doc.text((form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase(), PW/2, y+6.5, {align:'center'})
   y+=13
 
   doc.setDrawColor(...NAVY); doc.setLineWidth(0.3); doc.rect(MG,y,CW,48,'S')
@@ -392,8 +396,9 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   y+=51
 
   const fotoFachada = form.fotoPrincipal || form.fotos?.[0] || null
+  // Foto más grande: 75mm de alto en lugar de 52mm
   if(fotoFachada){
-    try{ doc.addImage(fotoFachada, 'JPEG', MG, y, CW, 52, undefined, 'FAST'); y+=54 }
+    try{ doc.addImage(fotoFachada, 'JPEG', MG, y, CW, 75, undefined, 'FAST'); y+=77 }
     catch(e){ y+=4 }
   } else { y+=4 }
 
@@ -414,6 +419,101 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.setDrawColor(...GOLD); doc.setLineWidth(0.3); doc.line(MG,y,MG+CW,y); y+=3
   doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...NAVY)
   doc.text(`Cédula: ${form.cedulaProfesional||'—'}   Reg. SHF: ${form.noRegSHF||'—'}   Reg. Estatal: ${form.regEstatalPeritos||'—'}`,MG,y); y+=3
+
+  // ═══════════════════════════════════════════
+  //  AVALÚO REFERIDO — ANÁLISIS INPC
+  //  Solo se incluye si el tipo es referido
+  // ═══════════════════════════════════════════
+  if(esReferido){
+    addPage()
+    secTit('AVALÚO REFERIDO — ANÁLISIS DEL VALOR REFERENCIADO')
+
+    const valorActualRef = n(
+      form.valorMercadoConclusion ||
+      form.valorActualConclusion  ||
+      form.valorFisico            ||
+      form.valorMercado
+    )
+    const inpcActualRef   = n(form.inpcActual)
+    const inpcReferenciad = n(form.inpcReferido)
+    const factorRef = inpcActualRef > 0 && inpcReferenciad > 0
+      ? inpcReferenciad / inpcActualRef
+      : null
+    const valorRefCalc  = factorRef && valorActualRef ? valorActualRef * factorRef : null
+    const valorRefFinal = n(form.valorReferidoFinal) || valorRefCalc || 0
+
+    // Etiquetas de periodo
+    const MESES_PDF = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+    const labelActualRef = (() => {
+      if (!form.fechaAvaluo) return 'Periodo Actual'
+      const m = form.fechaAvaluo.match(/^(\d{4})-(\d{2})/)
+      return m ? `${MESES_PDF[parseInt(m[2])]} ${m[1]}` : form.fechaAvaluo
+    })()
+    const labelRefPeriodo = form.mesReferido && form.anioReferido
+      ? `${MESES_PDF[parseInt(form.mesReferido)]||''} ${form.anioReferido}`
+      : (form.fechaAvaluoReferido || 'Periodo Referenciado')
+
+    // ── Tabla INPC ───────────────────────────────────────────
+    subTit('Datos del Cálculo — Factor INPC')
+    autoTable(doc, {
+      startY: y, margin: { left: MG, right: MG },
+      head: [['Concepto', 'Periodo', 'Valor']],
+      body: [
+        ['INPC Actual',         labelActualRef,   inpcActualRef   > 0 ? inpcActualRef.toString()   : '—'],
+        ['INPC Referenciado',   labelRefPeriodo,  inpcReferenciad > 0 ? inpcReferenciad.toString() : '—'],
+        ['Factor INPC',         `${inpcReferenciad} ÷ ${inpcActualRef}`,
+          factorRef ? factorRef.toFixed(8) : '—'],
+      ],
+      headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 7, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7 },
+      alternateRowStyles: { fillColor: LGRAY },
+      columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 60 }, 2: { cellWidth: 'auto' } },
+    })
+    y = doc.lastAutoTable.finalY + 4
+
+    // ── Operación visual ─────────────────────────────────────
+    if(factorRef && valorActualRef > 0){
+      checkY(22)
+      doc.setFillColor(...LGRAY); doc.rect(MG, y, CW, 18, 'F')
+      doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.rect(MG, y, CW, 18, 'S')
+      const col = CW / 5
+      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+      doc.text('AVALÚO ACTUAL',       MG+col*0.5, y+4,  {align:'center'})
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...NAVY)
+      doc.text(fmtM(valorActualRef),  MG+col*0.5, y+10, {align:'center'})
+      doc.setFontSize(12); doc.setTextColor(...DGRAY)
+      doc.text('×', MG+col*1.5, y+10, {align:'center'})
+      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+      doc.text('FACTOR INPC',         MG+col*2.5, y+4,  {align:'center'})
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...BLUE)
+      doc.text(factorRef.toFixed(8),  MG+col*2.5, y+10, {align:'center'})
+      doc.setFontSize(12); doc.setTextColor(...DGRAY)
+      doc.text('=', MG+col*3.5, y+10, {align:'center'})
+      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+      doc.text('VALOR REFERENCIADO',  MG+col*4.5, y+4,  {align:'center'})
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...GOLD)
+      doc.text(fmtM(valorRefCalc),    MG+col*4.5, y+10, {align:'center'})
+      y += 22
+    }
+
+    // ── Valor final ──────────────────────────────────────────
+    checkY(20)
+    doc.setFillColor(...NAVY); doc.rect(MG, y, CW, 16, 'F')
+    doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    doc.text('RESULTADO DEL VALOR REFERENCIADO DEL INMUEBLE:', MG+3, y+6)
+    doc.setFontSize(13); doc.text(fmtM(valorRefFinal), MG+3, y+14)
+    doc.setTextColor(180,200,220); doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+    doc.text(`Referenciado a: ${labelRefPeriodo}`, PW-MG-2, y+6,  {align:'right'})
+    if(factorRef)
+      doc.text(`Factor: ${factorRef.toFixed(8)}`, PW-MG-2, y+12, {align:'right'})
+    y += 19
+
+    if(form.declaracionesReferido){
+      y += 3
+      campo('Declaratoria', form.declaracionesReferido)
+    }
+  }
 
   // ═══════════════════════════════════════════
   //  I. CARACTERÍSTICAS URBANAS
@@ -945,25 +1045,239 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   })
 
   // ═══════════════════════════════════════════
-  //  DECLARACIONES PROFESIONALES
+  //  SECCIÓN EXCLUSIVA: VALOR REFERIDO
+  //  Solo se incluye en avalúos referidos
+  // ═══════════════════════════════════════════
+  if(esReferido){
+    addPage()
+    secTit('Análisis del Valor Referido — Cálculo por Factor INPC')
+
+    // ── Reconstruir valores igual que el Tab ────────────────
+    const MESES_REF = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+    const inpcActualV   = parseFloat(form.inpcActual)   || 0
+    const inpcRefeV     = parseFloat(form.inpcReferido) || 0
+    const factorCalcV   = inpcActualV > 0 && inpcRefeV > 0
+      ? inpcRefeV / inpcActualV : null
+    const valorActualV  = parseFloat(
+      form.valorMercadoConclusion || form.valorActualConclusion ||
+      form.valorFisico || form.valorMercado || 0
+    )
+    const valorRefCalcV  = factorCalcV && valorActualV ? valorActualV * factorCalcV : null
+    const valorRefFinalV = parseFloat(form.valorReferidoFinal) || valorRefCalcV || 0
+
+    const labelInpcActualV = (() => {
+      if (!form.fechaAvaluo) return 'Periodo Actual'
+      const m = form.fechaAvaluo.match(/^(\d{4})-(\d{2})/)
+      return m ? `${MESES_REF[parseInt(m[2])]} ${m[1]}` : form.fechaAvaluo
+    })()
+    const labelInpcRefV = form.mesReferido && form.anioReferido
+      ? `${MESES_REF[parseInt(form.mesReferido)]||''} ${form.anioReferido}`
+      : (form.fechaAvaluoReferido || 'Periodo Referido')
+
+    // ── 1. Valor Actual ──────────────────────────────────────
+    subTit('1. Valor Actual del Inmueble')
+    autoTable(doc, {
+      startY: y, margin: { left: MG, right: MG },
+      head: [['Concepto', 'Valor']],
+      body: [
+        ['Fecha del Avalúo Actual',  form.fechaAvaluo || '—'],
+        ['Avalúo Actual ($)',        valorActualV > 0 ? fmtM(valorActualV) : '—'],
+        [`INPC — ${labelInpcActualV}`, inpcActualV > 0 ? inpcActualV.toString() : '—'],
+      ],
+      headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 7, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8 },
+      alternateRowStyles: { fillColor: LGRAY },
+      columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 'auto' } },
+    })
+    y = doc.lastAutoTable.finalY + 6
+
+    // ── 2. Valor Referido ────────────────────────────────────
+    subTit('2. Datos del Periodo Referido')
+    autoTable(doc, {
+      startY: y, margin: { left: MG, right: MG },
+      head: [['Concepto', 'Valor']],
+      body: [
+        ['Periodo Referido',         labelInpcRefV],
+        [`INPC — ${labelInpcRefV}`,  inpcRefeV > 0 ? inpcRefeV.toString() : '—'],
+      ],
+      headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 7, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8 },
+      alternateRowStyles: { fillColor: LGRAY },
+      columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 'auto' } },
+    })
+    y = doc.lastAutoTable.finalY + 6
+
+    // ── 3. Fórmula visual del Factor ─────────────────────────
+    subTit('3. Factor de Valor Referido')
+    checkY(40)
+
+    // Caja de la fracción (división visual)
+    const boxX = MG + 10, boxW = 60, boxH = 28
+    doc.setFillColor(...LGRAY); doc.rect(boxX, y, boxW, boxH, 'F')
+    doc.setDrawColor(...NAVY); doc.setLineWidth(0.3); doc.rect(boxX, y, boxW, boxH, 'S')
+
+    // Numerador (INPC referido)
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...BLUE)
+    doc.text(inpcRefeV > 0 ? inpcRefeV.toString() : '?',
+      boxX + boxW/2, y + 9, {align:'center'})
+    // Subtítulo numerador
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+    doc.text(labelInpcRefV, boxX + boxW/2, y + 13, {align:'center'})
+    // Línea divisoria
+    doc.setDrawColor(...NAVY); doc.setLineWidth(0.5)
+    doc.line(boxX + 5, y + 15, boxX + boxW - 5, y + 15)
+    // Denominador (INPC actual)
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...NAVY)
+    doc.text(inpcActualV > 0 ? inpcActualV.toString() : '?',
+      boxX + boxW/2, y + 22, {align:'center'})
+    // Subtítulo denominador
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+    doc.text(labelInpcActualV, boxX + boxW/2, y + 26, {align:'center'})
+
+    // Símbolo igual y resultado
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...DGRAY)
+    doc.text('=', boxX + boxW + 8, y + 17)
+    // Caja resultado del factor
+    const resX = boxX + boxW + 20, resW = 55, resH = 16
+    doc.setFillColor(235,245,255); doc.rect(resX, y + 6, resW, resH, 'F')
+    doc.setDrawColor(...BLUE); doc.setLineWidth(0.4); doc.rect(resX, y + 6, resW, resH, 'S')
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...BLUE)
+    doc.text(factorCalcV ? factorCalcV.toFixed(8) : '—',
+      resX + resW/2, y + 16, {align:'center'})
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
+    doc.text('FACTOR RESULTANTE DE VALOR REFERIDO', resX + resW/2, y + 22, {align:'center'})
+
+    y += boxH + 8
+
+    // ── 4. Aplicación del Factor ─────────────────────────────
+    subTit('4. Aplicación del Factor')
+    checkY(30)
+
+    // Tres cajas: Avalúo Actual × Factor INPC = Valor Referido
+    const colW3 = (CW - 10) / 3, cY = y
+    const cajas = [
+      { label: 'AVALÚO ACTUAL',    valor: fmtM(valorActualV),             fill: [30,58,95],   textC: WHITE },
+      { label: 'FACTOR INPC',      valor: factorCalcV ? factorCalcV.toFixed(8) : '—', fill: [37,99,235], textC: WHITE },
+      { label: 'VALOR REFERIDO',   valor: fmtM(valorRefFinalV),           fill: GOLD,         textC: NAVY  },
+    ]
+    const ops = ['×', '=']
+    cajas.forEach((caja, i) => {
+      const cx = MG + i * (colW3 + 5)
+      doc.setFillColor(...caja.fill); doc.rect(cx, cY, colW3, 22, 'F')
+      doc.setFont('helvetica','bold'); doc.setFontSize(6)
+      doc.setTextColor(...caja.textC)
+      doc.text(caja.label, cx + colW3/2, cY + 6, {align:'center'})
+      doc.setFontSize(9)
+      doc.text(caja.valor, cx + colW3/2, cY + 15, {align:'center'})
+      // Operador entre cajas
+      if(i < ops.length){
+        doc.setFontSize(14); doc.setTextColor(...DGRAY)
+        doc.text(ops[i], cx + colW3 + 2.5, cY + 13, {align:'center'})
+      }
+    })
+    y += 28
+
+    // ── 5. Resultado del Valor Referido ─────────────────────
+    checkY(30)
+    y += 4
+    subTit('5. Resultado del Valor Referido del Inmueble')
+
+    // Caja principal del resultado
+    doc.setFillColor(...NAVY); doc.rect(MG, y, CW, 18, 'F')
+    doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    doc.text('RESULTADO DEL VALOR REFERIDO DEL INMUEBLE ($):', MG+3, y+6)
+    doc.setFontSize(14); doc.text(fmtM(valorRefFinalV), MG+3, y+15)
+    doc.setTextColor(180,200,220); doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+    doc.text(`Referenciado a: ${labelInpcRefV}`, PW-MG-2, y+6, {align:'right'})
+    if(factorCalcV)
+      doc.text(`Factor: ${factorCalcV.toFixed(8)}`, PW-MG-2, y+12, {align:'right'})
+    y += 22
+
+    // Valor en letras
+    if(form.valorConclusivoLetras || form.valorReferidoEnLetras){
+      checkY(12)
+      doc.setFillColor(...LGRAY); doc.setDrawColor(...GOLD); doc.setLineWidth(0.3)
+      doc.rect(MG, y, CW, 10, 'FD')
+      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...NAVY)
+      doc.text('SON:', MG+2, y+4)
+      doc.setFont('helvetica','normal'); doc.setTextColor(...BLACK)
+      const letras = (form.valorConclusivoLetras || form.valorReferidoEnLetras || '').toUpperCase()
+      const letLines = doc.splitTextToSize(letras, CW-16)
+      doc.text(letLines.slice(0,2), MG+14, y+4)
+      y += 12
+    }
+
+    // Declaratoria
+    if(form.declaracionesReferido){
+      checkY(14); y += 3
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...NAVY)
+      doc.text('DECLARATORIA:', MG, y); y += 4
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
+      const dRef = doc.splitTextToSize(form.declaracionesReferido, CW)
+      doc.text(dRef, MG, y); y += dRef.length * 4 + 4
+    }
+
+    // ── 6. Banner conclusión al final de la sección ─────────
+    checkY(24); y += 4
+    doc.setFillColor(...GOLD); doc.rect(MG, y, CW, 22, 'F')
+    doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    doc.text('CONCLUSIÓN DEL AVALÚO REFERIDO', PW/2, y+6, {align:'center'})
+    doc.setFontSize(15); doc.text(fmtM(valorRefFinalV), PW/2, y+15, {align:'center'})
+    if(labelInpcRefV){
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(50,40,20)
+      doc.text(`Referenciado a: ${labelInpcRefV}`, PW/2, y+21, {align:'center'})
+    }
+    y += 26
+  }
+
+  // ═══════════════════════════════════════════
+  //  DECLARACIONES Y ADVERTENCIAS
+  //  Usa las declaraciones capturadas por el valuador
+  //  (form.declaracionesExtra) más la declaración fija
   // ═══════════════════════════════════════════
   addPage()
-  secTit('Declaraciones Profesionales y Advertencias')
-  const declTexto=[
-    '1. El valuador declara haber realizado una inspección ocular directa del inmueble en la fecha indicada.',
-    '2. El presente dictamen no constituye un estudio estructural ni sustituye peritajes especializados.',
-    '3. Los honorarios profesionales son independientes del resultado del avalúo.',
-    '4. La información documental proporcionada fue considerada auténtica; el valuador no certifica su autenticidad.',
-    '5. El valor determinado corresponde exclusivamente a las condiciones de mercado observadas en la fecha de inspección.',
-    '6. La vigencia del avalúo es de '+(form.vigenciaAvaluo||'seis meses')+' a partir de la fecha de emisión.',
-    '7. El valuador declara no tener conflicto de interés con las partes involucradas en la operación.',
-  ]
-  declTexto.forEach(t=>{
-    checkY(8)
-    const lines=doc.splitTextToSize(t,CW)
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
-    doc.text(lines,MG,y); y+=lines.length*4.5+3
-  })
+  secTit('Declaraciones y Advertencias')
+
+  // Declaración fija — siempre incluida
+  const DECL_FIJA = (form.declaracionFija && form.declaracionFija.trim())
+  ? form.declaracionFija.trim()
+  : 'LAS DECLARACIONES DE HECHOS CONTENIDAS EN EL PRESENTE ESTUDIO SON VERDADERAS Y CORRECTAS. NO TENEMOS INTERÉS PRESENTE O FUTURO EN LA PROPIEDAD QUE ES OBJETO DE ESTE AVALÚO, NO TENEMOS INTERÉS PERSONAL O PARCIAL CON RESPECTO A LAS PARTES INVOLUCRADAS; ADEMÁS DECLARAMOS QUE NO PARTICIPAMOS EN EL CAPITAL O EN LOS ÓRGANOS ADMINISTRATIVOS DEL PROMOVENTE Y MANIFESTAMOS COMPLETA INDEPENDENCIA CON LA PROPIEDAD DE LOS BIENES. LOS EMOLUMENTOS RELATIVOS AL DESARROLLO DEL TRABAJO VALUATORIO, NO ESTÁN CONDICIONADOS AL REPORTE DE UN VALOR PREDETERMINADO O DIRIGIDO HACIA UN VALOR QUE FAVOREZCA LA CAUSA DE UN CLIENTE.'
+
+  // Caja de la declaración fija con fondo gris
+  checkY(30)
+  const dfijaLines = doc.splitTextToSize(DECL_FIJA, CW - 6)
+  const dfijaH = dfijaLines.length * 4 + 8
+  doc.setFillColor(...LGRAY); doc.setDrawColor(...NAVY); doc.setLineWidth(0.2)
+  doc.rect(MG, y, CW, dfijaH, 'FD')
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLACK)
+  doc.text(dfijaLines, MG + 3, y + 5)
+  y += dfijaH + 6
+
+  // Declaraciones del valuador (del tab Declaraciones)
+  const declsUsuario = Array.isArray(form.declaracionesExtra)
+    ? form.declaracionesExtra.filter(d => d && d.trim().length > 0)
+    : []
+
+  if(declsUsuario.length > 0){
+    declsUsuario.forEach((decl, i) => {
+      checkY(12)
+      const dlines = doc.splitTextToSize(decl.trim(), CW)
+      const dh = dlines.length * 4 + 6
+      doc.setFillColor(255,255,255); doc.setDrawColor(...MGRAY); doc.setLineWidth(0.2)
+      doc.rect(MG, y, CW, dh, 'FD')
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
+      doc.text(dlines, MG + 3, y + 4.5)
+      y += dh + 4
+    })
+  } else {
+    // Si no hay declaraciones del usuario, mostrar nota
+    checkY(10)
+    doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
+    doc.text('(Sin declaraciones adicionales capturadas en el tab Declaraciones)', MG, y)
+    y += 8
+  }
 
   // ═══════════════════════════════════════════
   //  ANEXO DOCUMENTAL
@@ -1008,16 +1322,20 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
           } catch(e) { console.warn('[PDF] No se pudo convertir base64 a bytes:', e.message) }
         }
       } else if(esImagen && d.data){
-        addPage()
-        doc.setFillColor(...LGRAY); doc.rect(MG,y,CW,8,'F')
-        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
-        doc.text(`ANEXO ${i+1} — ${(d.tipo||'Imagen').toUpperCase()}`, MG+2, y+4)
-        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-        doc.text(d.nombre||'', MG+2, y+8); y+=13
+        // Dos imágenes por página: si es número par abre página nueva
+        if(i % 2 === 0) addPage()
+        else checkY(120)
+        // Encabezado del anexo con el mismo diseño que las secciones
+        doc.setFillColor(...NAVY); doc.rect(MG,y,CW,6,'F')
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...WHITE)
+        doc.text(`ANEXO ${i+1} — ${(d.tipo||'Documento').toUpperCase()}`, MG+2, y+4.2)
+        doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(180,200,220)
+        doc.text(d.nombre||'', PW-MG-1, y+4.2, {align:'right'}); y+=8
+        // Imagen más pequeña: 100mm de alto en lugar de 200mm
         try{
-          const maxH=200
+          const maxH=100
           doc.addImage(d.data, 'JPEG', MG, y, CW, maxH, undefined, 'FAST')
-          y+=maxH+5
+          y+=maxH+6
         }catch(e){
           doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
           doc.text('[No se pudo mostrar la imagen]', MG, y); y+=6
@@ -1037,7 +1355,6 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   addPage()
   secTit('XI. Conclusión del Avalúo')
 
-  const esReferido = (form.tipoAvaluo||'').toLowerCase() === 'referido'
 
   const enfoqueData=[]
   if(n(form.valorMercado)>0) enfoqueData.push({label:'Valor de Mercado',    val:n(form.valorMercado), color:GOLD})
@@ -1065,7 +1382,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   // *** FIX v5: valor conclusivo correcto para cada tipo ***
   const _enf = form.enfoqueConclusivo||'mercado'
   const valConc = esReferido
-    ? (n(form.valorReferidoFinal) || n(form.valorMercado) || 0)
+    ? (n(form.valorReferidoFinal) || n(avaluoMeta?.valor_conclusivo) || n(form.valorMercado) || 0)
     : _enf==='fisico'  ? (n(form.valorFisico)  || n(form.valorMercado) || n(form.valorRentas))
     : _enf==='rentas'  ? (n(form.valorRentas)  || n(form.valorMercado) || n(form.valorFisico))
     : _enf==='mayor'   ? Math.max(n(form.valorMercado)||0, n(form.valorFisico)||0, n(form.valorRentas)||0)
@@ -1119,16 +1436,22 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.text(`Cédula: ${form.cedulaProfesional||'—'}   Reg. SHF: ${form.noRegSHF||'—'}`,PW/2,y,{align:'center'})
   if(form.regEstatalPeritos){ y+=4; doc.text(`Reg. Estatal: ${form.regEstatalPeritos}`,PW/2,y,{align:'center'}) }
 
-  // *** FIX v5: portada también usa valorReferidoFinal ***
+  // Portada: valor conclusivo — para referidos usa valorReferidoFinal
+  // Para referidos: etiqueta "VALOR REFERENCIADO DEL INMUEBLE"
+  // Para comerciales: etiqueta "VALOR CONCLUSIVO DEL INMUEBLE"
   const valConclPortada = esReferido
-    ? (n(form.valorReferidoFinal) || n(form.valorMercado) || 0)
+    ? (n(form.valorReferidoFinal) || n(avaluoMeta?.valor_conclusivo) || n(form.valorMercado) || 0)
     : (n(form.valorMercado) || n(form.valorFisico) || n(form.valorRentas))
   if(valConclPortada>0){
     doc.setPage(1)
-    const pyBox=248
+    // pyBox ajustado a 258 para no pisarse con la foto más grande
+    const pyBox=258
+    const lblPortada = esReferido
+      ? 'VALOR REFERENCIADO DEL INMUEBLE:'
+      : 'VALOR CONCLUSIVO DEL INMUEBLE:'
     doc.setFillColor(...GOLD); doc.rect(MG,pyBox,CW,22,'F')
     doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-    doc.text('VALOR CONCLUSIVO DEL INMUEBLE:',PW/2,pyBox+5,{align:'center'})
+    doc.text(lblPortada,PW/2,pyBox+5,{align:'center'})
     doc.setFontSize(16); doc.text(fmtM(valConclPortada),PW/2,pyBox+14,{align:'center'})
     if(form.valorConclusivoLetras){
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(50,40,20)
@@ -1137,15 +1460,23 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     }
   }
 
-  // Pie de página en todas las hojas
+  // Pie de página en todas las hojas — numeración más visible
   const total=doc.getNumberOfPages()
   for(let i=1;i<=total;i++){
     doc.setPage(i)
-    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...DGRAY)
-    doc.setDrawColor(...MGRAY); doc.setLineWidth(0.2); doc.line(MG,278,MG+CW,278)
-    doc.text(`Página ${i} de ${total}`,PW/2,282,{align:'center'})
-    doc.text(form.folioInterno||'',MG,282)
-    doc.text(form.peritoValuador||'',PW-MG,282,{align:'right'})
+    // Línea separadora
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.4); doc.line(MG,276,MG+CW,276)
+    // Fondo gris claro para el pie
+    doc.setFillColor(245,247,250); doc.rect(MG,277,CW,8,'F')
+    // Folio a la izquierda
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...DGRAY)
+    doc.text(form.folioInterno||'',MG+1,282)
+    // Número de página centrado — más grande y visible
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...NAVY)
+    doc.text(`— ${i} / ${total} —`,PW/2,282,{align:'center'})
+    // Perito a la derecha
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...DGRAY)
+    doc.text(form.peritoValuador||'',PW-MG-1,282,{align:'right'})
   }
 
   // ── DESCARGA: fusionar si hay PDFs anexos, descargar directo si no ──
@@ -1188,7 +1519,7 @@ export async function exportarExcel(form, avaluoMeta={}) {
   }
 
   const ws1=mkSheet([
-    H1('GIAVAL — AVALÚO COMERCIAL'),
+    H1(`GIAVAL — ${(form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase()}`),
     [],H2('DATOS DEL AVALÚO'),
     ['Folio:', form.folioInterno||''],['Fecha:', form.fechaAvaluo||''],
     ['Tipo de Avalúo:', form.tipoAvaluo||''],['Propósito:', form.proposito||''],

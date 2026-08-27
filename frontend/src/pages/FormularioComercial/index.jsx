@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Save, FileText, Map, Home, Building2,
+  ArrowLeft, Save, FileText, Map, Home, Building2, ScrollText,
   BarChart2, DollarSign, CheckCircle, Camera, CheckCircle2,
   Download, FileSpreadsheet, FileText as FilePdf, X,
 } from 'lucide-react'
@@ -25,6 +25,7 @@ import TabMercadoRentas     from './tabs/TabMercadoRentas'
 import TabIngresos          from './tabs/TabIngresos'
 import TabCostos            from './tabs/TabCostos'
 import TabConclusion        from './tabs/TabConclusion'
+import TabDeclaraciones from './tabs/TabDeclaraciones'
 import TabFotos             from './tabs/TabFotos'
 import LectorDocumento      from '../../components/LectorDocumento'
 import styles from './Formulario.module.css'
@@ -40,6 +41,7 @@ const TABS_BASE = [
   { key:'ingresos',   label:'Ingresos',          Icon: DollarSign,enfoque:'rentas'  },
   { key:'costos',     label:'Costos',            Icon: DollarSign,enfoque:'fisico'  },
   { key:'conclusion', label:'Conclusión',        Icon: CheckCircle           },
+  { key:'declaraciones', label:'Declaraciones', Icon: ScrollText },
   { key:'fotos',      label:'Fotos y Docs',       Icon: Camera                },
 ]
 
@@ -120,6 +122,8 @@ const FORM_VACIO = {
   declaraciones:'SE CONCLUYE CON EL VALOR COMPARATIVO DE MERCADO',
   vigenciaAvaluo:'Seis Meses',
   incluyeExcedenteTerreno: false,
+  declaracionesExtra: [''],
+  declaracionFija: '',
   fotoPrincipal:null,
   fotos:[],
   documentosAnexos:[],
@@ -295,6 +299,7 @@ export default function FormularioComercial() {
       case 'costos':     return <TabCostos            {...tabProps}/>
       case 'conclusion': return <TabConclusion        {...tabProps} avaluoId={avaluoId} estadoAvaluo={estadoAvaluo}/>
       case 'fotos':      return <TabFotos             {...tabProps}/>
+      case 'declaraciones': return <TabDeclaraciones {...tabProps}/>
       default:           return null
     }
   }
