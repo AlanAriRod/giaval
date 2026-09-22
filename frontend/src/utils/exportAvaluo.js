@@ -1241,18 +1241,20 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   secTit('Declaraciones y Advertencias')
 
   // Declaración fija — siempre incluida
-  const DECL_FIJA = (form.declaracionFija && form.declaracionFija.trim())
-  ? form.declaracionFija.trim()
-  : 'LAS DECLARACIONES DE HECHOS CONTENIDAS EN EL PRESENTE ESTUDIO SON VERDADERAS Y CORRECTAS. NO TENEMOS INTERÉS PRESENTE O FUTURO EN LA PROPIEDAD QUE ES OBJETO DE ESTE AVALÚO, NO TENEMOS INTERÉS PERSONAL O PARCIAL CON RESPECTO A LAS PARTES INVOLUCRADAS; ADEMÁS DECLARAMOS QUE NO PARTICIPAMOS EN EL CAPITAL O EN LOS ÓRGANOS ADMINISTRATIVOS DEL PROMOVENTE Y MANIFESTAMOS COMPLETA INDEPENDENCIA CON LA PROPIEDAD DE LOS BIENES. LOS EMOLUMENTOS RELATIVOS AL DESARROLLO DEL TRABAJO VALUATORIO, NO ESTÁN CONDICIONADOS AL REPORTE DE UN VALOR PREDETERMINADO O DIRIGIDO HACIA UN VALOR QUE FAVOREZCA LA CAUSA DE UN CLIENTE.'
+  const DECL_FIJA = 'LAS DECLARACIONES DE HECHOS CONTENIDAS EN EL PRESENTE ESTUDIO SON VERDADERAS Y CORRECTAS. NO TENEMOS INTERÉS PRESENTE O FUTURO EN LA PROPIEDAD QUE ES OBJETO DE ESTE AVALÚO, NO TENEMOS INTERÉS PERSONAL O PARCIAL CON RESPECTO A LAS PARTES INVOLUCRADAS; ADEMÁS DECLARAMOS QUE NO PARTICIPAMOS EN EL CAPITAL O EN LOS ÓRGANOS ADMINISTRATIVOS DEL PROMOVENTE Y MANIFESTAMOS COMPLETA INDEPENDENCIA CON LA PROPIEDAD DE LOS BIENES. LOS EMOLUMENTOS RELATIVOS AL DESARROLLO DEL TRABAJO VALUATORIO, NO ESTÁN CONDICIONADOS AL REPORTE DE UN VALOR PREDETERMINADO O DIRIGIDO HACIA UN VALOR QUE FAVOREZCA LA CAUSA DE UN CLIENTE.'
 
-  // Caja de la declaración fija con fondo gris
-  checkY(30)
-  const dfijaLines = doc.splitTextToSize(DECL_FIJA, CW - 6)
-  const dfijaH = dfijaLines.length * 4 + 8
+  // FIX desfase: usar leading consistente para calcular altura de caja
+  const LINE_H_DECL = 3.8  // espaciado real por línea a fontSize 7
+
+  // Declaración fija con fondo gris
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLACK)
+  const dfijaLines = doc.splitTextToSize(DECL_FIJA, CW - 8)
+  const dfijaH = dfijaLines.length * LINE_H_DECL + 8
+  checkY(dfijaH + 4)
   doc.setFillColor(...LGRAY); doc.setDrawColor(...NAVY); doc.setLineWidth(0.2)
   doc.rect(MG, y, CW, dfijaH, 'FD')
-  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLACK)
-  doc.text(dfijaLines, MG + 3, y + 5)
+  // Texto centrado verticalmente: margen superior de 4pt
+  doc.text(dfijaLines, MG + 4, y + 4, { lineHeightFactor: 1.15 })
   y += dfijaH + 6
 
   // Declaraciones del valuador (del tab Declaraciones)
@@ -1261,18 +1263,18 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     : []
 
   if(declsUsuario.length > 0){
-    declsUsuario.forEach((decl, i) => {
-      checkY(12)
-      const dlines = doc.splitTextToSize(decl.trim(), CW)
-      const dh = dlines.length * 4 + 6
+    declsUsuario.forEach((decl) => {
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
+      const dlines = doc.splitTextToSize(decl.trim(), CW - 8)
+      const LINE_H2 = 4.2
+      const dh = dlines.length * LINE_H2 + 7
+      checkY(dh + 4)
       doc.setFillColor(255,255,255); doc.setDrawColor(...MGRAY); doc.setLineWidth(0.2)
       doc.rect(MG, y, CW, dh, 'FD')
-      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...BLACK)
-      doc.text(dlines, MG + 3, y + 4.5)
+      doc.text(dlines, MG + 4, y + 4, { lineHeightFactor: 1.15 })
       y += dh + 4
     })
   } else {
-    // Si no hay declaraciones del usuario, mostrar nota
     checkY(10)
     doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
     doc.text('(Sin declaraciones adicionales capturadas en el tab Declaraciones)', MG, y)
@@ -1504,284 +1506,1022 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
 // ══════════════════════════════════════════════════════════════════
 //  EXCEL — idéntico al v4 + hoja 9 incluye valorReferidoFinal
 // ══════════════════════════════════════════════════════════════════
-export async function exportarExcel(form, avaluoMeta={}) {
-  const XLSX = await import('xlsx')
-  const wb   = XLSX.utils.book_new()
 
-  const TH = (t) => ({v:t,t:'s',s:{font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A5F'}}}})
-  const TG = (t) => ({v:t,t:'s',s:{font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'C9972A'}}}})
-  const H1 = (t) => [{v:t,t:'s',s:{font:{bold:true,sz:13},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'center'}}}]
-  const H2 = (t) => [{v:t,t:'s',s:{font:{bold:true,sz:10},fill:{fgColor:{rgb:'C9972A'}}}}]
-  const mkSheet = (rows,name) => {
-    const ws=XLSX.utils.aoa_to_sheet(rows)
-    XLSX.utils.book_append_sheet(wb,ws,name.substring(0,31))
-    return ws
+// ══════════════════════════════════════════════════════════════════
+//  EXCEL — Reescrito con ExcelJS para formato profesional
+//  Sigue la estructura de 38 hojas del formato original GIAVAL
+// ══════════════════════════════════════════════════════════════════
+export async function exportarExcel(form, avaluoMeta = {}) {
+  const ExcelJS = await import('exceljs')
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'GIAVAL — Sistema de Avaluos'
+  wb.created = new Date()
+
+  const n = v => parseFloat(v) || 0
+  const esRef = (form.tipoAvaluo || '').toLowerCase().includes('referido')
+
+  // ── Colores corporativos ─────────────────────────────────────
+  const NAVY  = '1F3864'
+  const GOLD  = 'C9A84C'
+  const LGRAY = 'F0F4F8'
+  const WHITE = 'FFFFFF'
+  const BLACK = '000000'
+  const BLUE  = '2E75B6'
+
+  // ── Helpers de estilo ────────────────────────────────────────
+  const fmtMXN = v => v > 0
+    ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(v)
+    : '—'
+
+  const hdrStyle = (bgColor = NAVY, fgColor = WHITE, sz = 11) => ({
+    font: { bold: true, color: { argb: fgColor }, size: sz, name: 'Arial' },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } },
+    alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+    border: {
+      top:    { style: 'thin', color: { argb: '999999' } },
+      bottom: { style: 'thin', color: { argb: '999999' } },
+      left:   { style: 'thin', color: { argb: '999999' } },
+      right:  { style: 'thin', color: { argb: '999999' } },
+    }
+  })
+
+  const dataStyle = (bg = WHITE, bold = false, align = 'left') => ({
+    font: { bold, color: { argb: BLACK }, size: 10, name: 'Arial' },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } },
+    alignment: { vertical: 'middle', horizontal: align, wrapText: true },
+    border: {
+      top:    { style: 'hair', color: { argb: 'CCCCCC' } },
+      bottom: { style: 'hair', color: { argb: 'CCCCCC' } },
+      left:   { style: 'hair', color: { argb: 'CCCCCC' } },
+      right:  { style: 'hair', color: { argb: 'CCCCCC' } },
+    }
+  })
+
+  const goldStyle = (sz = 11) => ({
+    font: { bold: true, color: { argb: NAVY }, size: sz, name: 'Arial' },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } },
+    alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+    border: {
+      top:    { style: 'medium', color: { argb: GOLD } },
+      bottom: { style: 'medium', color: { argb: GOLD } },
+      left:   { style: 'medium', color: { argb: GOLD } },
+      right:  { style: 'medium', color: { argb: GOLD } },
+    }
+  })
+
+  // Aplica estilo a un rango de celdas
+  const styleRange = (ws, startRow, startCol, endRow, endCol, style) => {
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        Object.assign(ws.getCell(r, c), { style })
+      }
+    }
   }
 
-  const ws1=mkSheet([
-    H1(`GIAVAL — ${(form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase()}`),
-    [],H2('DATOS DEL AVALÚO'),
-    ['Folio:', form.folioInterno||''],['Fecha:', form.fechaAvaluo||''],
-    ['Tipo de Avalúo:', form.tipoAvaluo||''],['Propósito:', form.proposito||''],
-    ['Vigencia:', form.vigenciaAvaluo||''],['Solicitante:', form.nombreSolicitante||''],
-    ['Propietario:', form.nombrePropietario||''],['Bien Valuado:', form.bienQueSeValua||''],
-    ['Régimen:', form.regimenPropiedad||''],
-    [],H2('PERITO VALUADOR'),
-    ['Nombre:', form.peritoValuador||''],['Maestría:', form.maestria||''],
-    ['Cédula Profesional:', form.cedulaProfesional||''],['Reg. SHF:', form.noRegSHF||''],
-    ['Reg. Estatal:', form.regEstatalPeritos||''],
-    [],H2('DIRECCIÓN DEL INMUEBLE'),
-    ['Calle:', form.calle||''],['Núm. Exterior:', form.numeroExterior||''],
-    ['Núm. Interior:', form.numeroInterior||''],['Colonia:', form.colonia||''],
-    ['Manzana:', form.manzana||''],['Lote:', form.lote||''],
-    ['Código Postal:', form.codigoPostal||''],['Municipio:', form.municipio||''],
-    ['Estado:', form.entidadFederativa||''],['Cuenta Predial:', form.cuentaPredial||''],
-    ['Latitud:', form.latitud||''],['Longitud:', form.longitud||''],['Altitud:', form.altitud||''],
-    [],H2('CARACTERÍSTICAS URBANAS'),
-    ['Nivel Infraestructura:', form.nivelInfraestructura||''],
-    ['Agua Potable:', form.aguaPotable||''],['Drenaje:', form.drenaje||''],
-    ['Electrificación:', form.electrificacion||''],['Alumbrado:', form.alumbradoPublico||''],
-    ['Telefonía:', form.telefono||''],['Señalización:', form.senalizacion||''],
-    ['Transporte Público:', form.transportePublico||''],['Vigilancia:', form.vigilancia||''],
-    ['Nivel Equipamiento:', form.nivelEquipamiento||''],
-    ['Clasificación Zona:', form.clasificacionZona||''],['Uso de Suelo:', form.usoSuelo||''],
-    ['Proximidad Urbana:', form.refProximidadUrbana||''],
-    ['Vías de Acceso:', form.viasAcceso||''],
-    ['Construcc. Predominantes:', form.construccionesPredominantes||''],
-    [],H2('MEDIDAS Y COLINDANCIAS'),
-    ['Área Terreno (m²):', form.areaTerreno||''],
-    ['Área Constr. Habitable (m²):', form.areaConstruccionHabitable||''],
-    ['Indiviso (%):', form.indiviso||''],['Topografía:', form.topografia||''],
-    ['Núm. de Frentes:', form.numeroFrente||''],['Servidumbres:', form.servidumbre||''],
-    [],H2('DATOS DE LA ESCRITURA'),
-    ['Notario:', form.notarioNombre||''],['Núm. Notaría:', form.numeroNotario||''],
-    ['Ciudad Notario:', form.notarioCiudad||''],['Núm. Escritura:', form.numeroEscritura||''],
-    ['Fecha Escritura:', form.fechaEscritura||''],
-    [],H2('DESCRIPCIÓN DEL INMUEBLE'),
-    ['Tipo Construcción:', form.tiposConstruccion||''],['Calidad:', form.calidadClasificacion||''],
-    ['Nº de Niveles:', form.numNiveles!=null?String(form.numNiveles):''],
-    ['Edad Aprox. (años):', form.edadAproximada||''],['Vida Total (años):', form.vidaTotal||''],
-    ['Vida Remanente:', (form.vidaTotal&&form.edadAproximada)?String(n(form.vidaTotal)-n(form.edadAproximada)):''],
-    ['Estado Conservación:', form.estadoConservacion||''],
-    ['Calidad del Proyecto:', form.calidadProyecto||''],['Uso Actual:', form.usoActual||''],
-    ['Recámaras:', form.numRecamaras||''],['Baños Completos:', form.numBanosCompletos||''],
-    ['Medios Baños:', form.numMediosBanos||''],['Estacionamientos:', form.estacionamientos||''],
-    ['Elevador:', form.elevador||''],['Cocinas:', form.numCocina||''],
-    ['Estructura:', form.estructura||''],['Hidráulica:', form.hidraulico||''],
-    ['Eléctrica:', form.electrico||''],['Carpintería:', form.carpinteria||''],
-    ['Herrería:', form.herreria||''],
-    [],H2('VALORES DEL AVALÚO'),
-    ['Valor de Mercado:', n(form.valorMercado)||''],
-    ['Valor Físico:', n(form.valorFisico)||''],
-    ['Valor por Rentas:', n(form.valorRentas)||''],
-    ['Valor Referido Final:', n(form.valorReferidoFinal)||''],
-    ['Enfoque Conclusivo:', form.enfoqueConclusivo||''],
-    ['Declaración:', form.declaraciones||''],
-    ['Valor en Letras:', form.valorConclusivoLetras||''],
-    ['Vigencia:', form.vigenciaAvaluo||''],
-  ],'01-Datos Generales')
-  ws1['!cols']=[{wch:35},{wch:75}]
+  // Encabezado estándar de cada hoja (folio, fecha, vigencia)
+  const addEncabezado = (ws, titulo) => {
+    ws.mergeCells('A1:H1')
+    const t = ws.getCell('A1')
+    t.value = titulo
+    Object.assign(t, { style: hdrStyle(NAVY, WHITE, 13) })
+    ws.getRow(1).height = 22
 
-  if(form.medidas?.length){
-    const ws2=mkSheet([
-      H1('MEDIDAS Y COLINDANCIAS'),
-      [`Según: ${form.medidasSegun||'Escritura Pública'}`],[],
-      [TH('Orientación'),TH('Distancia (m)'),TH('Colindante')],
-      ...form.medidas.map(m=>[
-        m.orientacion==='Otro'?(m.orientacionOtro||'Otro'):m.orientacion,
-        m.distancia||'—', m.colindante||'—',
-      ]),
-    ],'02-Medidas')
-    ws2['!cols']=[{wch:18},{wch:16},{wch:60}]
+    ws.mergeCells('A2:E2')
+    ws.getCell('A2').value = `FOLIO: ${form.folioInterno || '—'}   |   FECHA: ${form.fechaAvaluo || '—'}   |   VIGENCIA: ${form.vigenciaAvaluo || 'Seis Meses'}`
+    Object.assign(ws.getCell('A2'), { style: dataStyle(LGRAY, true, 'center') })
+    ws.mergeCells('F2:H2')
+    ws.getCell('F2').value = form.peritoValuador || '—'
+    Object.assign(ws.getCell('F2'), { style: dataStyle(LGRAY, false, 'right') })
+    ws.getRow(2).height = 16
+
+    ws.mergeCells('A3:H3')
+    ws.getCell('A3').value = 'Norte 3  No.54 Altos 1  Tel: 2722174550  Col. Centro  Orizaba, Veracruz.'
+    Object.assign(ws.getCell('A3'), { style: dataStyle(WHITE, false, 'center') })
+    ws.getRow(3).height = 14
+
+    // Línea separadora
+    ws.mergeCells('A4:H4')
+    ws.getCell('A4').value = ''
+    ws.getRow(4).height = 6
+    for (let c = 1; c <= 8; c++) {
+      ws.getCell(4, c).style = {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } }
+      }
+    }
+
+    return 5 // próxima fila disponible
   }
 
-  if(form.acabados?.length){
-    const ws3=mkSheet([
-      H1('TABLA DE ACABADOS POR ESPACIO'),[],
-      [TH('Espacio'),TH('Piso'),TH('Muro'),TH('Plafón')],
-      ...form.acabados.map(a=>[a.espacio||'',a.piso||'',a.muro||'',a.plafon||'']),
-    ],'03-Acabados')
-    ws3['!cols']=[{wch:22},{wch:42},{wch:42},{wch:42}]
+  // ────────────────────────────────────────────────────────────
+  // 1. PORTADA
+  // ────────────────────────────────────────────────────────────
+  const wsPortada = wb.addWorksheet('PORTADA')
+  wsPortada.columns = [
+    { key: 'a', width: 22 }, { key: 'b', width: 16 },
+    { key: 'c', width: 20 }, { key: 'd', width: 16 },
+    { key: 'e', width: 18 }, { key: 'f', width: 14 },
+    { key: 'g', width: 14 }, { key: 'h', width: 14 },
+  ]
+
+  wsPortada.mergeCells('A1:H2')
+  wsPortada.getCell('A1').value = 'GIAVAL — GRUPO INMOBILIARIO DE AVALÚOS'
+  Object.assign(wsPortada.getCell('A1'), { style: hdrStyle(NAVY, GOLD, 18) })
+  wsPortada.getRow(1).height = 30
+
+  wsPortada.mergeCells('A3:H3')
+  wsPortada.getCell('A3').value = (form.tipoAvaluo || 'AVALÚO COMERCIAL').toUpperCase()
+  Object.assign(wsPortada.getCell('A3'), { style: goldStyle(14) })
+  wsPortada.getRow(3).height = 22
+
+  const porFields = [
+    ['Folio Interno:', form.folioInterno || '—'],
+    ['Fecha del Avalúo:', form.fechaAvaluo || '—'],
+    ['Vigencia:', form.vigenciaAvaluo || 'Seis Meses'],
+    ['Propósito:', form.proposito || '—'],
+    ['Tipo de Inmueble:', form.bienQueSeValua || '—'],
+    ['Régimen:', form.regimenPropiedad || '—'],
+  ]
+
+  wsPortada.getRow(4).height = 8
+  porFields.forEach(([lbl, val], i) => {
+    const r = 5 + i
+    wsPortada.mergeCells(`A${r}:B${r}`)
+    wsPortada.getCell(`A${r}`).value = lbl
+    Object.assign(wsPortada.getCell(`A${r}`), { style: dataStyle(LGRAY, true) })
+    wsPortada.mergeCells(`C${r}:H${r}`)
+    wsPortada.getCell(`C${r}`).value = val
+    Object.assign(wsPortada.getCell(`C${r}`), { style: dataStyle(WHITE) })
+    wsPortada.getRow(r).height = 16
+  })
+
+  const porDir = [
+    ['Nombre del Propietario:', form.nombrePropietario || '—'],
+    ['Nombre del Solicitante:', form.nombreSolicitante || '—'],
+    ['Calle:', `${form.calle || ''} ${form.numeroExterior || ''}`.trim() || '—'],
+    ['Colonia:', form.colonia || '—'],
+    ['Municipio:', form.municipio || '—'],
+    ['Código Postal:', form.codigoPostal || '—'],
+    ['Entidad Federativa:', form.entidadFederativa || '—'],
+    ['Cuenta Predial:', form.cuentaPredial || '—'],
+    ['Coordenadas:', form.latitud && form.longitud ? `${form.latitud}, ${form.longitud}` : '—'],
+  ]
+
+  let rp = 12
+  wsPortada.getRow(rp).height = 8
+  rp++
+  wsPortada.mergeCells(`A${rp}:H${rp}`)
+  wsPortada.getCell(`A${rp}`).value = 'IDENTIFICACIÓN DEL INMUEBLE'
+  Object.assign(wsPortada.getCell(`A${rp}`), { style: hdrStyle(BLUE, WHITE, 11) })
+  wsPortada.getRow(rp).height = 18
+  rp++
+
+  porDir.forEach(([lbl, val]) => {
+    wsPortada.mergeCells(`A${rp}:B${rp}`)
+    wsPortada.getCell(`A${rp}`).value = lbl
+    Object.assign(wsPortada.getCell(`A${rp}`), { style: dataStyle(LGRAY, true) })
+    wsPortada.mergeCells(`C${rp}:H${rp}`)
+    wsPortada.getCell(`C${rp}`).value = val
+    Object.assign(wsPortada.getCell(`C${rp}`), { style: dataStyle(WHITE) })
+    wsPortada.getRow(rp).height = 16
+    rp++
+  })
+
+  // Valor conclusivo
+  rp += 2
+  wsPortada.mergeCells(`A${rp}:H${rp}`)
+  wsPortada.getCell(`A${rp}`).value = esRef ? 'VALOR REFERENCIADO DEL INMUEBLE' : 'CONCLUSIÓN DEL AVALÚO'
+  Object.assign(wsPortada.getCell(`A${rp}`), { style: hdrStyle(NAVY, GOLD, 13) })
+  wsPortada.getRow(rp).height = 22
+  rp++
+
+  const valFinal = esRef
+    ? (n(form.valorReferidoFinal) || n(avaluoMeta?.valor_conclusivo) || 0)
+    : (n(form.valorMercado) || n(form.valorFisico) || n(form.valorRentas))
+
+  wsPortada.mergeCells(`A${rp}:H${rp}`)
+  wsPortada.getCell(`A${rp}`).value = valFinal > 0 ? valFinal : '—'
+  wsPortada.getCell(`A${rp}`).numFmt = '"$"#,##0.00'
+  Object.assign(wsPortada.getCell(`A${rp}`), { style: goldStyle(16) })
+  wsPortada.getRow(rp).height = 28
+  rp++
+
+  if (form.valorConclusivoLetras) {
+    wsPortada.mergeCells(`A${rp}:H${rp}`)
+    wsPortada.getCell(`A${rp}`).value = `(${form.valorConclusivoLetras.toUpperCase()})`
+    Object.assign(wsPortada.getCell(`A${rp}`), { style: dataStyle(LGRAY, false, 'center') })
+    wsPortada.getRow(rp).height = 18
   }
 
-  if(form.comparablesCasa?.length){
-    const customF=form.factoresCasaCustom||[]
-    const baseKeys=['neg','ubic','sup','calid','edoCons','zona']
-    const todos=[...baseKeys.map(k=>({key:k,label:k.toUpperCase()})),...customF.map(f=>({key:f.key,label:f.label}))]
-    const enNRCasa=calcEnNR(form.comparablesCasa,customF,'casa')
-    const areaCH=n(form.areaConstruccionHabitable||form.areaConstruccion)
-    const ws4=mkSheet([
-      H1('ENFOQUE DE MERCADO — COMPARABLES CASA'),[],
-      [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Oferta ($)'),TH('Sup.Const. m²'),TH('$/m² Base'),
-        ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
-      ...form.comparablesCasa.filter(c=>c.oferta).map((c,i)=>{
-        const fre=todos.reduce((a,f)=>a*(parseFloat(c.factores?.[f.key])||1),1)
-        const base=c.oferta&&c.supConst?parseFloat(c.oferta)/parseFloat(c.supConst):0
-        return [i+1,c.ciudad||'',c.colonia||'',n(c.oferta),n(c.supConst),
-          parseFloat(base.toFixed(2)),...todos.map(f=>parseFloat((parseFloat(c.factores?.[f.key]||1)).toFixed(4))),
-          parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
-      }),
-      [],[TG('EN N.R. $/m²'),enNRCasa||0,'',TG('ÁREA HAB. m²'),areaCH||0],
-      [TG('T-1 VALOR TOTAL'),enNRCasa&&areaCH?parseFloat((enNRCasa*areaCH).toFixed(2)):0],
-    ],'04-Comp. Casa')
-    ws4['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
-  }
+  // ────────────────────────────────────────────────────────────
+  // 2. DATOS GENERALES
+  // ────────────────────────────────────────────────────────────
+  const wsDatos = wb.addWorksheet('Datos Generales')
+  wsDatos.columns = [
+    { key: 'a', width: 32 }, { key: 'b', width: 28 },
+    { key: 'c', width: 20 }, { key: 'd', width: 20 },
+  ]
+  let rd = addEncabezado(wsDatos, 'I. DATOS GENERALES DEL AVALÚO')
 
-  if(form.comparablesTerreno?.length){
-    const customF=form.factoresTerrenoCustom||[]
-    const baseKeys=['neg','zona','ubica','frente','sup','forma']
-    const todos=[...baseKeys.map(k=>({key:k,label:k.toUpperCase()})),...customF.map(f=>({key:f.key,label:f.label}))]
-    const enNRTerr=calcEnNR(form.comparablesTerreno,customF,'terreno')
-    const areaT=n(form.areaTerreno)
-    const ws5=mkSheet([
-      H1('ENFOQUE FÍSICO — COMPARABLES TERRENO'),[],
-      [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Oferta ($)'),TH('Sup. m²'),TH('$/m² Base'),
-        ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
-      ...form.comparablesTerreno.filter(c=>c.oferta).map((c,i)=>{
-        const fre=todos.reduce((a,f)=>a*(parseFloat(c.factores?.[f.key])||1),1)
-        const base=c.oferta&&c.supM2?parseFloat(c.oferta)/parseFloat(c.supM2):0
-        return [i+1,c.ciudad||'',c.colonia||'',n(c.oferta),n(c.supM2),
-          parseFloat(base.toFixed(2)),...todos.map(f=>parseFloat((parseFloat(c.factores?.[f.key]||1)).toFixed(4))),
-          parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
-      }),
-      [],[TG('EN N.R. $/m²'),enNRTerr||0,'',TG('ÁREA TERRENO m²'),areaT||0],
-      [TG('VALOR TERRENO'),enNRTerr&&areaT?parseFloat((enNRTerr*areaT).toFixed(2)):0],
-    ],'05-Comp. Terreno')
-    ws5['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
-  }
+  const datosSecs = [
+    { titulo: 'DATOS DEL EXPEDIENTE', campos: [
+      ['Folio Interno', form.folioInterno || '—'],
+      ['Tipo de Avalúo', form.tipoAvaluo || '—'],
+      ['Propósito', form.proposito || '—'],
+      ['Fecha del Avalúo', form.fechaAvaluo || '—'],
+      ['Vigencia', form.vigenciaAvaluo || 'Seis Meses'],
+      ['Bien que se Valúa', form.bienQueSeValua || '—'],
+      ['Régimen de Propiedad', form.regimenPropiedad || '—'],
+      ['Uso de Suelo', form.usoSuelo || '—'],
+      ['Uso Actual', form.usoActual || '—'],
+    ]},
+    { titulo: 'PARTES INVOLUCRADAS', campos: [
+      ['Nombre del Propietario', form.nombrePropietario || '—'],
+      ['Nombre del Solicitante', form.nombreSolicitante || '—'],
+      ['Perito Valuador', form.peritoValuador || '—'],
+      ['Maestría / Especialidad', form.maestria || '—'],
+      ['Cédula Profesional', form.cedulaProfesional || '—'],
+      ['Registro SHF', form.noRegSHF || '—'],
+      ['Registro Estatal Peritos', form.regEstatalPeritos || '—'],
+    ]},
+    { titulo: 'DOMICILIO DEL INMUEBLE', campos: [
+      ['Calle', form.calle || '—'],
+      ['Número Exterior', form.numeroExterior || '—'],
+      ['Número Interior', form.numeroInterior || '—'],
+      ['Colonia / Fraccionamiento', form.colonia || '—'],
+      ['Municipio', form.municipio || '—'],
+      ['Código Postal', form.codigoPostal || '—'],
+      ['Entidad Federativa', form.entidadFederativa || '—'],
+      ['Cuenta Predial', form.cuentaPredial || '—'],
+      ['Latitud', form.latitud || '—'],
+      ['Longitud', form.longitud || '—'],
+      ['Altitud', form.altitud || '—'],
+    ]},
+    { titulo: 'DATOS DE LA ESCRITURA / NOTARÍA', campos: [
+      ['Notario', form.notarioNombre || '—'],
+      ['Número de Notaría', form.numeroNotario || '—'],
+      ['Ciudad del Notario', form.notarioCiudad || '—'],
+      ['Número de Escritura', form.numeroEscritura || '—'],
+      ['Fecha de Escritura', form.fechaEscritura || '—'],
+      ['Medidas Según', form.medidasSegun || '—'],
+    ]},
+  ]
 
-  if(form.comparablesRentas?.length){
-    const customF=form.factoresRentasCustom||[]
-    const baseKeys=['neg','ubic','sup','calid','edoCons']
-    const todos=[...baseKeys.map(k=>({key:k,label:k.toUpperCase()})),...customF.map(f=>({key:f.key,label:f.label}))]
-    const ws6=mkSheet([
-      H1('MERCADO DE RENTAS — COMPARABLES'),[],
-      [TH('#'),TH('Ciudad'),TH('Colonia'),TH('Renta/mes ($)'),TH('Sup. m²'),TH('$/m²/mes'),
-        ...todos.map(f=>TH(f.label)),TH('FRe'),TH('$/m² Hom.')],
-      ...form.comparablesRentas.filter(c=>c.oferta).map((c,i)=>{
-        const fre=todos.reduce((a,f)=>a*(parseFloat(c.factores?.[f.key])||1),1)
-        const base=c.oferta&&c.supM2?parseFloat(c.oferta)/parseFloat(c.supM2):0
-        return [i+1,c.ciudad||'',c.colonia||'',n(c.oferta),n(c.supM2),
-          parseFloat(base.toFixed(2)),...todos.map(f=>parseFloat((parseFloat(c.factores?.[f.key]||1)).toFixed(4))),
-          parseFloat(fre.toFixed(4)),parseFloat((base*fre).toFixed(2))]
-      }),
-    ],'06-Mercado Rentas')
-    ws6['!cols']=[{wch:5},{wch:14},{wch:14},{wch:15},{wch:12},{wch:12},...todos.map(()=>({wch:9})),{wch:10},{wch:14}]
-  }
+  datosSecs.forEach(sec => {
+    wsDatos.mergeCells(`A${rd}:D${rd}`)
+    wsDatos.getCell(`A${rd}`).value = sec.titulo
+    Object.assign(wsDatos.getCell(`A${rd}`), { style: hdrStyle(BLUE, WHITE, 11) })
+    wsDatos.getRow(rd).height = 18
+    rd++
 
-  const costRows=[H1('COSTOS — ENFOQUE FÍSICO')]
-  const enNRTerr=calcEnNR(form.comparablesTerreno,form.factoresTerrenoCustom,'terreno')
-  const indiv=n(form.indiviso)/100||1
-  let totalTerr=0,totalCons=0,totalInst=0
-  if(form.fraccionesTerreno?.length){
-    costRows.push([],H2('a) VALOR DEL TERRENO'))
-    costRows.push([TH('Sup. m²'),TH('V.U. $/m²'),TH('Coeficiente'),TH('Motivo'),TH('V.U. Result.'),TH('Valor Parcial')])
-    form.fraccionesTerreno.forEach(f=>{
-      const sup=n(f.sup)||n(form.areaTerreno)
-      const vu=n(f.valorUnit)||enNRTerr||0
-      const coef=n(f.coeficiente)||indiv
-      const motivo=f.motivo==='OTRO'?(f.motivoOtro||'Otro'):(f.motivo||'NINGUNO')
-      const parcial=sup*vu*coef; totalTerr+=parcial
-      costRows.push([sup,vu,coef,motivo,vu,parcial])
+    sec.campos.forEach(([lbl, val]) => {
+      wsDatos.mergeCells(`A${rd}:B${rd}`)
+      wsDatos.getCell(`A${rd}`).value = lbl
+      Object.assign(wsDatos.getCell(`A${rd}`), { style: dataStyle(LGRAY, true) })
+      wsDatos.mergeCells(`C${rd}:D${rd}`)
+      wsDatos.getCell(`C${rd}`).value = val
+      Object.assign(wsDatos.getCell(`C${rd}`), { style: dataStyle(WHITE) })
+      wsDatos.getRow(rd).height = 16
+      rd++
     })
-    costRows.push([TG('TOTAL TERRENO'),totalTerr])
-  }
-  if(form.construcciones?.length){
-    costRows.push([],H2('b) VALOR DE CONSTRUCCIÓN'))
-    costRows.push([TH('Tipo'),TH('Descripción'),TH('Área'),TH('CRN'),TH('Dem.Edad'),TH('Dem.Cal'),TH('Fre'),TH('CNR.Unit.'),TH('Valor Total')])
-    form.construcciones.forEach(c=>{
-      const area=n(c.area)||n(form.areaConstruccionHabitable)
-      const crn=n(c.crn),edad=n(c.factorDemeritoEdad),cal=n(c.factorDemeritoCalidad)
-      const fre=edad*cal,cnrU=fre>0?fre*crn:crn,vt=area*cnrU; totalCons+=vt
-      costRows.push([c.tipo||'',c.descripcion||'',area,crn,edad,cal,fre>0?fre:0,cnrU>0?cnrU:0,vt>0?vt:0])
+    rd++
+  })
+
+  // ────────────────────────────────────────────────────────────
+  // 3. CARACTERÍSTICAS URBANAS Y DEL TERRENO
+  // ────────────────────────────────────────────────────────────
+  const wsCarac = wb.addWorksheet('Carac. Terreno')
+  wsCarac.columns = [
+    { key: 'a', width: 32 }, { key: 'b', width: 28 },
+    { key: 'c', width: 20 }, { key: 'd', width: 20 },
+  ]
+  let rc = addEncabezado(wsCarac, 'II. CARACTERÍSTICAS URBANAS Y DEL TERRENO')
+
+  const caracSecs = [
+    { titulo: 'CARACTERÍSTICAS URBANAS', campos: [
+      ['Nivel de Infraestructura', form.nivelInfraestructura || '—'],
+      ['Agua Potable', form.aguaPotable || '—'],
+      ['Drenaje', form.drenaje || '—'],
+      ['Electrificación', form.electrificacion || '—'],
+      ['Alumbrado Público', form.alumbradoPublico || '—'],
+      ['Telefonía', form.telefono || '—'],
+      ['Señalización', form.senalizacion || '—'],
+      ['Transporte Público', form.transportePublico || '—'],
+      ['Vigilancia', form.vigilancia || '—'],
+      ['Nivel de Equipamiento', form.nivelEquipamiento || '—'],
+      ['Clasificación de Zona', form.clasificacionZona || '—'],
+      ['Uso de Suelo', form.usoSuelo || '—'],
+      ['Proximidad Urbana', form.refProximidadUrbana || '—'],
+      ['Vías de Acceso', form.viasAcceso || '—'],
+      ['Construcciones Predominantes', form.construccionesPredominantes || '—'],
+    ]},
+    { titulo: 'MEDIDAS Y COLINDANCIAS', campos: [
+      ['Superficie del Terreno (m²)', form.areaTerreno || '—'],
+      ['Superficie Construcción Habitable (m²)', form.areaConstruccionHabitable || '—'],
+      ['Área de Construcción Total (m²)', form.areaConstruccion || '—'],
+      ['Indiviso (%)', form.indiviso || '—'],
+      ['Topografía', form.topografia || '—'],
+      ['Número de Frentes', form.numeroFrente || '—'],
+      ['Servidumbres', form.servidumbre || 'Ninguna'],
+      ['Observaciones del Predio', form.observacionesPredio || '—'],
+    ]},
+  ]
+
+  // Medidas individuales
+  if (form.medidas?.length) {
+    caracSecs.push({
+      titulo: 'TABLA DE MEDIDAS Y COLINDANCIAS',
+      campos: form.medidas.map(m => [
+        m.orientacion === 'Otro' ? (m.orientacionOtro || 'Otro') : m.orientacion,
+        `${m.distancia || '—'} m — ${m.colindante || '—'}`
+      ])
     })
-    if(form.notasConstruccion) costRows.push([TH('NOTAS:'),form.notasConstruccion])
-    costRows.push([TG('SUBTOTAL CONSTRUCCIÓN'),totalCons])
   }
-  if(form.instalaciones?.length){
-    costRows.push([],H2('c) INSTALACIONES ESPECIALES — I-ESPEC'))
-    costRows.push([TH('p/c'),TH('Descripción'),TH('Unidad'),TH('Cantidad'),TH('Edad'),TH('V.R.N.'),TH('F.Cons'),TH('F.Edad'),TH('F.Otro'),TH('FRe'),TH('V.N.R.'),TH('V.Parcial')])
-    form.instalaciones.forEach((x,i)=>{
-      const fc=n(x.factorCons)||1,fe=n(x.factorEdad)||1,fo=n(x.factorOtro)||1
-      const fre=fc*fe*fo,vnr=n(x.vrn)*fre,parcial=n(x.cantidad)*vnr; totalInst+=parcial
-      costRows.push([i+1,x.descripcion||'',x.unidad||'',n(x.cantidad),n(x.edad),n(x.vrn),fc,fe,fo,fre,vnr,parcial])
+
+  caracSecs.forEach(sec => {
+    wsCarac.mergeCells(`A${rc}:D${rc}`)
+    wsCarac.getCell(`A${rc}`).value = sec.titulo
+    Object.assign(wsCarac.getCell(`A${rc}`), { style: hdrStyle(BLUE, WHITE, 11) })
+    wsCarac.getRow(rc).height = 18
+    rc++
+
+    sec.campos.forEach(([lbl, val]) => {
+      wsCarac.mergeCells(`A${rc}:B${rc}`)
+      wsCarac.getCell(`A${rc}`).value = lbl
+      Object.assign(wsCarac.getCell(`A${rc}`), { style: dataStyle(LGRAY, true) })
+      wsCarac.mergeCells(`C${rc}:D${rc}`)
+      wsCarac.getCell(`C${rc}`).value = val
+      Object.assign(wsCarac.getCell(`C${rc}`), { style: dataStyle(WHITE) })
+      wsCarac.getRow(rc).height = 16
+      rc++
     })
-    costRows.push([TG('SUBTOTAL I-ESPEC'),totalInst])
-  }
-  const totalFisico=totalTerr+totalCons+totalInst
-  if(totalFisico>0){
-    costRows.push([],[TG('VALOR FÍSICO TOTAL'),totalFisico])
-    costRows.push([TH('Terreno'),totalTerr,TH('Construcción'),totalCons,TH('I-Espec'),totalInst])
-  }
-  if(costRows.length>1){
-    const ws7=mkSheet(costRows,'07-Costos')
-    ws7['!cols']=[{wch:12},{wch:25},{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:12},{wch:14}]
+    rc++
+  })
+
+  // ────────────────────────────────────────────────────────────
+  // 4. DESCRIPCIÓN DEL INMUEBLE
+  // ────────────────────────────────────────────────────────────
+  const wsDescrip = wb.addWorksheet('Descrip. Inmueble')
+  wsDescrip.columns = [
+    { key: 'a', width: 32 }, { key: 'b', width: 28 },
+    { key: 'c', width: 20 }, { key: 'd', width: 20 },
+  ]
+  let rdes = addEncabezado(wsDescrip, 'III. DESCRIPCIÓN DEL INMUEBLE')
+
+  // Descripción narrativa
+  wsDescrip.mergeCells(`A${rdes}:D${rdes}`)
+  wsDescrip.getCell(`A${rdes}`).value = 'DESCRIPCIÓN GENERAL'
+  Object.assign(wsDescrip.getCell(`A${rdes}`), { style: hdrStyle(BLUE, WHITE, 11) })
+  wsDescrip.getRow(rdes).height = 18; rdes++
+
+  if (form.descripcionInmueble) {
+    wsDescrip.mergeCells(`A${rdes}:D${rdes + 3}`)
+    wsDescrip.getCell(`A${rdes}`).value = form.descripcionInmueble
+    Object.assign(wsDescrip.getCell(`A${rdes}`), {
+      style: { ...dataStyle(WHITE), alignment: { wrapText: true, vertical: 'top' } }
+    })
+    wsDescrip.getRow(rdes).height = 60; rdes += 4
   }
 
-  if(form.ingresos){
-    const ing=form.ingresos
-    const deducKeys=['porcVacios','porcPredial','porcAgua','porcConsManto','porcAdmon','porcEnergElec','porcSeguros','porcISR','porcOtros']
-    const deducLabels=['Vacíos','Imp. Predial','Serv. Agua','Cons/Manto','Admón.','Energ. Eléc.','Seguros','ISR','Otros']
-    const totalDeducc=deducKeys.reduce((a,k)=>a+n(ing[k]),0)
-    const rentaBruta=(ing.tiposRenta||[]).reduce((a,t)=>a+n(t.supM2)*n(t.valorM2),0)
-    const deduccImp=rentaBruta*totalDeducc/100
-    const rentaNetaMens=rentaBruta-deduccImp
-    const mult=n(ing.multiplicadorAnual)||15
-    const rentaNetaAnual=rentaNetaMens*mult
-    const tasa=n(ing.tasaManual)||0
-    const valorRentas=tasa>0?rentaNetaAnual/(tasa/100):0
-    const ws8=mkSheet([
-      H1('ENFOQUE DE INGRESOS — CAPITALIZACIÓN DE RENTAS'),[],
-      H2('TIPOS DE RENTA'),
-      [TH('Tipo'),TH('Destino'),TH('Sup. m²'),TH('$/m²/mes'),TH('Renta Mensual')],
-      ...(ing.tiposRenta||[]).map(t=>[t.tipo||'',t.destino||'',n(t.supM2),n(t.valorM2),n(t.supM2)*n(t.valorM2)]),
-      [TG('RENTA BRUTA MENSUAL'),rentaBruta],[],
-      H2('DEDUCCIONES'),
-      [TH('Concepto'),TH('% Deducción')],
-      ...deducKeys.map((k,i)=>[deducLabels[i],n(ing[k])]),
-      [TG('TOTAL DEDUCCIONES'),totalDeducc],[],
-      H2('CASCADA DE RENTA'),
-      ['Renta Bruta Mensual',rentaBruta],['Total Deducciones (importe)',deduccImp],
-      ['Renta Neta Mensual',rentaNetaMens],[`Renta Neta Anual (× ${mult} meses)`,rentaNetaAnual],
-      [`Tasa de Capitalización`,tasa],
-      [TG('VALOR POR CAPITALIZACIÓN'),valorRentas||n(form.valorRentas)],
-    ],'08-Ingresos')
-    ws8['!cols']=[{wch:40},{wch:20},{wch:15},{wch:15},{wch:18}]
+  const descripFields = [
+    ['Tipo de Construcción', form.tiposConstruccion || '—'],
+    ['Calidad / Clasificación', form.calidadClasificacion || '—'],
+    ['Número de Niveles', form.numNiveles != null ? String(form.numNiveles) : '—'],
+    ['Edad Aproximada (años)', form.edadAproximada || '—'],
+    ['Vida Útil Total (años)', form.vidaTotal || '—'],
+    ['Vida Remanente (años)', (form.vidaTotal && form.edadAproximada) ? String(n(form.vidaTotal) - n(form.edadAproximada)) : '—'],
+    ['Estado de Conservación', form.estadoConservacion || '—'],
+    ['Calidad del Proyecto', form.calidadProyecto || '—'],
+    ['Uso Actual', form.usoActual || '—'],
+    ['Número de Recámaras', form.numRecamaras || '—'],
+    ['Baños Completos', form.numBanosCompletos || '—'],
+    ['Medios Baños', form.numMediosBanos || '—'],
+    ['Estacionamientos', form.estacionamientos || '—'],
+    ['Elevador', form.elevador || 'No tiene'],
+    ['Cocinas', form.numCocina || '—'],
+    ['Estructura', form.estructura || '—'],
+    ['Inst. Hidráulica', form.hidraulico || '—'],
+    ['Inst. Eléctrica', form.electrico || '—'],
+    ['Carpintería', form.carpinteria || '—'],
+    ['Herrería', form.herreria || '—'],
+  ]
+
+  wsDescrip.mergeCells(`A${rdes}:D${rdes}`)
+  wsDescrip.getCell(`A${rdes}`).value = 'CARACTERÍSTICAS DEL INMUEBLE'
+  Object.assign(wsDescrip.getCell(`A${rdes}`), { style: hdrStyle(BLUE, WHITE, 11) })
+  wsDescrip.getRow(rdes).height = 18; rdes++
+
+  descripFields.forEach(([lbl, val]) => {
+    wsDescrip.mergeCells(`A${rdes}:B${rdes}`)
+    wsDescrip.getCell(`A${rdes}`).value = lbl
+    Object.assign(wsDescrip.getCell(`A${rdes}`), { style: dataStyle(LGRAY, true) })
+    wsDescrip.mergeCells(`C${rdes}:D${rdes}`)
+    wsDescrip.getCell(`C${rdes}`).value = val
+    Object.assign(wsDescrip.getCell(`C${rdes}`), { style: dataStyle(WHITE) })
+    wsDescrip.getRow(rdes).height = 16; rdes++
+  })
+
+  // Tabla de acabados
+  if (form.acabados?.length) {
+    rdes++
+    wsDescrip.mergeCells(`A${rdes}:D${rdes}`)
+    wsDescrip.getCell(`A${rdes}`).value = 'TABLA DE ACABADOS'
+    Object.assign(wsDescrip.getCell(`A${rdes}`), { style: hdrStyle(BLUE, WHITE, 11) })
+    wsDescrip.getRow(rdes).height = 18; rdes++
+
+    const acabHdr = ['Espacio', 'Piso', 'Muro', 'Plafón']
+    acabHdr.forEach((h, i) => {
+      wsDescrip.getCell(rdes, i + 1).value = h
+      Object.assign(wsDescrip.getCell(rdes, i + 1), { style: hdrStyle(NAVY, WHITE, 10) })
+    })
+    wsDescrip.getRow(rdes).height = 16; rdes++
+
+    form.acabados.forEach((a, idx) => {
+      const bg = idx % 2 === 0 ? LGRAY : WHITE
+      ;[a.espacio, a.piso, a.muro, a.plafon].forEach((v, i) => {
+        wsDescrip.getCell(rdes, i + 1).value = v || '—'
+        Object.assign(wsDescrip.getCell(rdes, i + 1), { style: dataStyle(bg) })
+      })
+      wsDescrip.getRow(rdes).height = 16; rdes++
+    })
   }
 
-  // Hoja 9: Conclusión — FIX v5: incluye valorReferidoFinal
-  const esRef = (form.tipoAvaluo||'').toLowerCase()==='referido'
-  const valConclExcel = esRef
-    ? (n(form.valorReferidoFinal)||n(form.valorMercado)||0)
-    : (n(form.valorMercado)||n(form.valorFisico)||n(form.valorRentas))
-  const ws9=mkSheet([
-    H1('CONCLUSIÓN DEL AVALÚO'),[],
-    H2('CUADRO COMPARATIVO DE ENFOQUES'),
-    [TH('Enfoque'),TH('Valor ($)'),TH('% Relativo')],
-    ...[
-      ['Valor de Mercado',n(form.valorMercado)],
-      ['Valor Físico',n(form.valorFisico)],
-      ['Valor por Capitalización de Rentas',n(form.valorRentas)],
-      ['Valor Referido Final',n(form.valorReferidoFinal)],
-    ].filter(([,v])=>v>0).map(([l,v])=>{
-      const maxV=Math.max(n(form.valorMercado),n(form.valorFisico),n(form.valorRentas),n(form.valorReferidoFinal))
-      return [l,v,parseFloat((v/maxV*100).toFixed(1))]
-    }),
-    [],H2('CONCLUSIÓN'),
-    ['Tipo de Avalúo:', form.tipoAvaluo||''],
-    ['Enfoque Conclusivo:', esRef?'Valor Referido Final':(form.enfoqueConclusivo||'')],
-    ['Valor Conclusivo ($):', valConclExcel],
-    ['Valor en Letras:', form.valorConclusivoLetras||''],
-    ['Declaración:', form.declaraciones||''],
-    ['Vigencia:', form.vigenciaAvaluo||''],
-    ['Fecha:', form.fechaAvaluo||''],
-    [],H2('PERITO VALUADOR'),
-    ['Nombre:', form.peritoValuador||''],['Maestría:', form.maestria||''],
-    ['Cédula:', form.cedulaProfesional||''],['Reg. SHF:', form.noRegSHF||''],
-    ['Reg. Estatal:', form.regEstatalPeritos||''],
-  ],'09-Conclusión')
-  ws9['!cols']=[{wch:38},{wch:22},{wch:15}]
+  // ────────────────────────────────────────────────────────────
+  // 5. COMPARABLE CASA (Enfoque de Mercado)
+  // ────────────────────────────────────────────────────────────
+  const wsCasa = wb.addWorksheet('Comparable Casa')
+  const customFCasa = form.factoresCasaCustom || []
+  const baseKeysCasa = ['neg', 'ubic', 'sup', 'calid', 'edoCons', 'zona']
+  const todosFCasa = [
+    ...baseKeysCasa.map(k => ({ key: k, label: k.toUpperCase() })),
+    ...customFCasa.map(f => ({ key: f.key, label: f.label }))
+  ]
+  const calcVU = (comp, factores) => {
+    const supKey = 'supConst'
+    if (!comp.oferta || !comp[supKey]) return 0
+    const fre = factores.reduce((a, f) => a * (parseFloat(comp.factores?.[f.key]) || 1), 1)
+    return parseFloat(comp.oferta) / parseFloat(comp[supKey]) * fre
+  }
+  const enNRCasa = (() => {
+    const vus = (form.comparablesCasa || []).filter(c => c.oferta && c.supConst).map(c => calcVU(c, todosFCasa))
+    return vus.length > 0 ? Math.round(vus.reduce((a, b) => a + b, 0) / vus.length) : 0
+  })()
+  const areaCH = n(form.areaConstruccionHabitable || form.areaConstruccion)
 
-  const folio=(form.folioInterno||'avaluo').replace(/[^a-zA-Z0-9\-_]/g,'_')
-  XLSX.writeFile(wb,`${folio}_avaluo.xlsx`)
+  const colsCasa = [
+    { width: 5 }, { width: 16 }, { width: 16 }, { width: 12 },
+    { width: 10 }, { width: 12 },
+    ...todosFCasa.map(() => ({ width: 8 })),
+    { width: 10 }, { width: 14 }
+  ]
+  wsCasa.columns = colsCasa
+  let rca = addEncabezado(wsCasa, 'VII. MERCADO DE INMUEBLES SIMILARES — CASAS EN VENTA')
+
+  // Encabezados tabla
+  const casaHdrs = ['#', 'Ciudad', 'Colonia', 'Oferta ($)', 'Sup. m²', '$/m² Base', ...todosFCasa.map(f => f.label), 'FRe', '$/m² Hom.']
+  casaHdrs.forEach((h, i) => {
+    wsCasa.getCell(rca, i + 1).value = h
+    Object.assign(wsCasa.getCell(rca, i + 1), { style: hdrStyle(NAVY, WHITE, 9) })
+  })
+  wsCasa.getRow(rca).height = 20; rca++
+
+  ;(form.comparablesCasa || []).filter(c => c.oferta).forEach((c, idx) => {
+    const fre = todosFCasa.reduce((a, f) => a * (parseFloat(c.factores?.[f.key]) || 1), 1)
+    const base = c.oferta && c.supConst ? parseFloat(c.oferta) / parseFloat(c.supConst) : 0
+    const vu = base * fre
+    const bg = idx % 2 === 0 ? LGRAY : WHITE
+    const row = [
+      idx + 1, c.ciudad || '—', c.colonia || '—',
+      n(c.oferta), n(c.supConst),
+      parseFloat(base.toFixed(2)),
+      ...todosFCasa.map(f => parseFloat((parseFloat(c.factores?.[f.key] || 1)).toFixed(4))),
+      parseFloat(fre.toFixed(4)),
+      parseFloat(vu.toFixed(2))
+    ]
+    row.forEach((v, i) => {
+      wsCasa.getCell(rca, i + 1).value = v
+      const isNum = typeof v === 'number'
+      Object.assign(wsCasa.getCell(rca, i + 1), { style: dataStyle(bg, false, isNum ? 'right' : 'left') })
+      if (i === 3 || i === row.length - 1) wsCasa.getCell(rca, i + 1).numFmt = '"$"#,##0.00'
+    })
+    wsCasa.getRow(rca).height = 16; rca++
+
+    // Fila de características y URL
+    if (c.descripcion || c.caracteristicas || c.url) {
+      wsCasa.mergeCells(`A${rca}:${String.fromCharCode(65 + colsCasa.length - 1)}${rca}`)
+      wsCasa.getCell(`A${rca}`).value = [c.descripcion || c.caracteristicas, c.url].filter(Boolean).join(' | ')
+      Object.assign(wsCasa.getCell(`A${rca}`), { style: { ...dataStyle('FFF9E6'), alignment: { wrapText: true } } })
+      wsCasa.getRow(rca).height = 30; rca++
+    }
+  })
+
+  // Fila de resultado EN N.R.
+  wsCasa.mergeCells(`A${rca}:E${rca}`)
+  wsCasa.getCell(`A${rca}`).value = 'EN N.R. PROMEDIO $/m²:'
+  Object.assign(wsCasa.getCell(`A${rca}`), { style: hdrStyle(NAVY, WHITE, 10) })
+  wsCasa.getCell(rca, 6).value = enNRCasa > 0 ? enNRCasa : '—'
+  if (enNRCasa > 0) wsCasa.getCell(rca, 6).numFmt = '"$"#,##0.00'
+  Object.assign(wsCasa.getCell(rca, 6), { style: goldStyle(11) })
+  wsCasa.getRow(rca).height = 20; rca++
+
+  rca++
+  wsCasa.getCell(`A${rca}`).value = 'Área Construida (m²):'
+  Object.assign(wsCasa.getCell(`A${rca}`), { style: dataStyle(LGRAY, true) })
+  wsCasa.getCell(rca, 2).value = areaCH || '—'
+  Object.assign(wsCasa.getCell(rca, 2), { style: dataStyle(WHITE) })
+  wsCasa.getRow(rca).height = 16; rca++
+
+  wsCasa.getCell(`A${rca}`).value = 'Valor de Mercado Total:'
+  Object.assign(wsCasa.getCell(`A${rca}`), { style: dataStyle(LGRAY, true) })
+  const vmTotal = enNRCasa && areaCH ? enNRCasa * areaCH : 0
+  wsCasa.getCell(rca, 2).value = vmTotal > 0 ? vmTotal : '—'
+  if (vmTotal > 0) wsCasa.getCell(rca, 2).numFmt = '"$"#,##0.00'
+  Object.assign(wsCasa.getCell(rca, 2), { style: goldStyle(11) })
+  wsCasa.getRow(rca).height = 18
+
+  // ────────────────────────────────────────────────────────────
+  // 6. COMPARABLE TERRENO
+  // ────────────────────────────────────────────────────────────
+  const wsTerreno = wb.addWorksheet('Comparable Terreno')
+  const customFTerreno = form.factoresTerrenoCustom || []
+  const baseKeysTerreno = ['neg', 'zona', 'ubica', 'frente', 'sup', 'forma']
+  const todosFTerreno = [
+    ...baseKeysTerreno.map(k => ({ key: k, label: k.toUpperCase() })),
+    ...customFTerreno.map(f => ({ key: f.key, label: f.label }))
+  ]
+  const enNRTerreno = (() => {
+    const vus = (form.comparablesTerreno || []).filter(c => c.oferta && c.supM2).map(c => {
+      const fre = todosFTerreno.reduce((a, f) => a * (parseFloat(c.factores?.[f.key]) || 1), 1)
+      return parseFloat(c.oferta) / parseFloat(c.supM2) * fre
+    })
+    return vus.length > 0 ? Math.round(vus.reduce((a, b) => a + b, 0) / vus.length) : 0
+  })()
+  const areaT = n(form.areaTerreno)
+
+  const colsTer = [
+    { width: 5 }, { width: 16 }, { width: 16 }, { width: 12 },
+    { width: 10 }, { width: 12 },
+    ...todosFTerreno.map(() => ({ width: 8 })),
+    { width: 10 }, { width: 14 }
+  ]
+  wsTerreno.columns = colsTer
+  let rter = addEncabezado(wsTerreno, 'VIII. MERCADO DE INMUEBLES SIMILARES — TERRENOS')
+
+  const terHdrs = ['#', 'Ciudad', 'Colonia', 'Oferta ($)', 'Sup. m²', '$/m² Base', ...todosFTerreno.map(f => f.label), 'FRe', '$/m² Hom.']
+  terHdrs.forEach((h, i) => {
+    wsTerreno.getCell(rter, i + 1).value = h
+    Object.assign(wsTerreno.getCell(rter, i + 1), { style: hdrStyle(NAVY, WHITE, 9) })
+  })
+  wsTerreno.getRow(rter).height = 20; rter++
+
+  ;(form.comparablesTerreno || []).filter(c => c.oferta).forEach((c, idx) => {
+    const fre = todosFTerreno.reduce((a, f) => a * (parseFloat(c.factores?.[f.key]) || 1), 1)
+    const base = c.oferta && c.supM2 ? parseFloat(c.oferta) / parseFloat(c.supM2) : 0
+    const vu = base * fre
+    const bg = idx % 2 === 0 ? LGRAY : WHITE
+    const row = [
+      idx + 1, c.ciudad || '—', c.colonia || '—',
+      n(c.oferta), n(c.supM2),
+      parseFloat(base.toFixed(2)),
+      ...todosFTerreno.map(f => parseFloat((parseFloat(c.factores?.[f.key] || 1)).toFixed(4))),
+      parseFloat(fre.toFixed(4)),
+      parseFloat(vu.toFixed(2))
+    ]
+    row.forEach((v, i) => {
+      wsTerreno.getCell(rter, i + 1).value = v
+      const isNum = typeof v === 'number'
+      Object.assign(wsTerreno.getCell(rter, i + 1), { style: dataStyle(bg, false, isNum ? 'right' : 'left') })
+      if (i === 3 || i === row.length - 1) wsTerreno.getCell(rter, i + 1).numFmt = '"$"#,##0.00'
+    })
+    wsTerreno.getRow(rter).height = 16; rter++
+
+    if (c.descripcion || c.url) {
+      wsTerreno.mergeCells(`A${rter}:${String.fromCharCode(65 + colsTer.length - 1)}${rter}`)
+      wsTerreno.getCell(`A${rter}`).value = [c.descripcion, c.url].filter(Boolean).join(' | ')
+      Object.assign(wsTerreno.getCell(`A${rter}`), { style: { ...dataStyle('FFF9E6'), alignment: { wrapText: true } } })
+      wsTerreno.getRow(rter).height = 30; rter++
+    }
+  })
+
+  wsTerreno.mergeCells(`A${rter}:E${rter}`)
+  wsTerreno.getCell(`A${rter}`).value = 'EN N.R. PROMEDIO $/m² TERRENO:'
+  Object.assign(wsTerreno.getCell(`A${rter}`), { style: hdrStyle(NAVY, WHITE, 10) })
+  wsTerreno.getCell(rter, 6).value = enNRTerreno > 0 ? enNRTerreno : '—'
+  if (enNRTerreno > 0) wsTerreno.getCell(rter, 6).numFmt = '"$"#,##0.00'
+  Object.assign(wsTerreno.getCell(rter, 6), { style: goldStyle(11) })
+  wsTerreno.getRow(rter).height = 20; rter++
+
+  rter++
+  wsTerreno.getCell(`A${rter}`).value = 'Área Terreno (m²):'
+  Object.assign(wsTerreno.getCell(`A${rter}`), { style: dataStyle(LGRAY, true) })
+  wsTerreno.getCell(rter, 2).value = areaT || '—'
+  Object.assign(wsTerreno.getCell(rter, 2), { style: dataStyle(WHITE) })
+  wsTerreno.getRow(rter).height = 16; rter++
+
+  wsTerreno.getCell(`A${rter}`).value = 'Valor del Terreno Total:'
+  Object.assign(wsTerreno.getCell(`A${rter}`), { style: dataStyle(LGRAY, true) })
+  const vtTotal = enNRTerreno && areaT ? enNRTerreno * areaT : 0
+  wsTerreno.getCell(rter, 2).value = vtTotal > 0 ? vtTotal : '—'
+  if (vtTotal > 0) wsTerreno.getCell(rter, 2).numFmt = '"$"#,##0.00'
+  Object.assign(wsTerreno.getCell(rter, 2), { style: goldStyle(11) })
+  wsTerreno.getRow(rter).height = 18
+
+  // ────────────────────────────────────────────────────────────
+  // 7. MERCADO DE RENTAS
+  // ────────────────────────────────────────────────────────────
+  if ((form.comparablesRentas || []).length > 0 || form.ingresos) {
+    const wsRentas = wb.addWorksheet('Mercado Rentas')
+    wsRentas.columns = [
+      { width: 5 }, { width: 16 }, { width: 16 }, { width: 14 },
+      { width: 12 }, { width: 12 }, { width: 10 }, { width: 14 }
+    ]
+    let rrn = addEncabezado(wsRentas, 'IX. MERCADO DE RENTAS')
+
+    ;['#', 'Ciudad', 'Colonia', 'Renta/mes ($)', 'Sup. m²', '$/m²/mes', 'FRe', '$/m² Hom.'].forEach((h, i) => {
+      wsRentas.getCell(rrn, i + 1).value = h
+      Object.assign(wsRentas.getCell(rrn, i + 1), { style: hdrStyle(NAVY, WHITE, 9) })
+    })
+    wsRentas.getRow(rrn).height = 20; rrn++
+
+    ;(form.comparablesRentas || []).filter(c => c.oferta).forEach((c, idx) => {
+      const fre = ['neg','ubic','sup','calid','edoCons'].reduce((a, k) => a * (parseFloat(c.factores?.[k]) || 1), 1)
+      const base = c.oferta && c.supM2 ? parseFloat(c.oferta) / parseFloat(c.supM2) : 0
+      const bg = idx % 2 === 0 ? LGRAY : WHITE
+      ;[idx+1, c.ciudad||'—', c.colonia||'—', n(c.oferta), n(c.supM2), parseFloat(base.toFixed(2)), parseFloat(fre.toFixed(4)), parseFloat((base*fre).toFixed(2))].forEach((v, i) => {
+        wsRentas.getCell(rrn, i + 1).value = v
+        Object.assign(wsRentas.getCell(rrn, i + 1), { style: dataStyle(bg, false, typeof v === 'number' ? 'right' : 'left') })
+        if (i === 3 || i === 7) wsRentas.getCell(rrn, i + 1).numFmt = '"$"#,##0.00'
+      })
+      wsRentas.getRow(rrn).height = 16; rrn++
+    })
+
+    // Sección de capitalización de rentas
+    if (form.ingresos) {
+      const ing = form.ingresos
+      rrn += 2
+      wsRentas.mergeCells(`A${rrn}:H${rrn}`)
+      wsRentas.getCell(`A${rrn}`).value = 'CAPITALIZACIÓN DE RENTAS'
+      Object.assign(wsRentas.getCell(`A${rrn}`), { style: hdrStyle(BLUE, WHITE, 11) })
+      wsRentas.getRow(rrn).height = 18; rrn++
+
+      const deducKeys = ['porcVacios','porcPredial','porcAgua','porcConsManto','porcAdmon','porcEnergElec','porcSeguros','porcISR','porcOtros']
+      const deducLabels = ['Vacíos','Imp. Predial','Agua','Cons/Manto','Admón.','Energ. Eléc.','Seguros','ISR','Otros']
+      const totalDeducc = deducKeys.reduce((a, k) => a + n(ing[k]), 0)
+      const rentaBruta = (ing.tiposRenta || []).reduce((a, t) => a + n(t.supM2) * n(t.valorM2), 0)
+      const rentaNetaMens = rentaBruta - rentaBruta * totalDeducc / 100
+      const mult = n(ing.multiplicadorAnual) || 15
+      const tasa = n(ing.tasaManual) || 0
+      const valorRentas = tasa > 0 ? (rentaNetaMens * mult) / (tasa / 100) : 0
+
+      const ingFields = [
+        ['Renta Bruta Mensual', rentaBruta],
+        [`Total Deducciones (${totalDeducc.toFixed(2)}%)`, rentaBruta * totalDeducc / 100],
+        ['Renta Neta Mensual', rentaNetaMens],
+        [`Renta Neta Anual (× ${mult} meses)`, rentaNetaMens * mult],
+        ['Tasa de Capitalización (%)', tasa],
+        ['Valor por Capitalización', valorRentas],
+      ]
+      ingFields.forEach(([lbl, val], i) => {
+        wsRentas.getCell(rrn, 1).value = lbl
+        Object.assign(wsRentas.getCell(rrn, 1), { style: dataStyle(LGRAY, true) })
+        wsRentas.getCell(rrn, 2).value = val
+        wsRentas.getCell(rrn, 2).numFmt = i === 4 ? '0.00"%"' : '"$"#,##0.00'
+        const isLast = i === ingFields.length - 1
+        Object.assign(wsRentas.getCell(rrn, 2), { style: isLast ? goldStyle(11) : dataStyle(WHITE, false, 'right') })
+        wsRentas.getRow(rrn).height = 16; rrn++
+      })
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 8. COSTOS — ENFOQUE FÍSICO
+  // ────────────────────────────────────────────────────────────
+  const wsCostos = wb.addWorksheet('Costos-Topog.')
+  wsCostos.columns = [
+    { width: 10 }, { width: 24 }, { width: 12 }, { width: 12 },
+    { width: 10 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }
+  ]
+  let rco = addEncabezado(wsCostos, 'XI. ENFOQUE FÍSICO — COSTOS Y VALORACIÓN')
+
+  let totalTerr = 0, totalCons = 0, totalInst = 0
+
+  // a) Terreno
+  if (form.fraccionesTerreno?.length) {
+    wsCostos.mergeCells(`A${rco}:I${rco}`)
+    wsCostos.getCell(`A${rco}`).value = 'a) VALOR DEL TERRENO — FRACCIONES'
+    Object.assign(wsCostos.getCell(`A${rco}`), { style: hdrStyle(BLUE, WHITE, 11) })
+    wsCarac.getRow(rco).height = 18; rco++
+
+    ;['Sup. (m²)', 'V.U. ($/m²)', 'Coeficiente', 'Motivo', 'V.U. Resultante', '', '', 'Valor Parcial', ''].forEach((h, i) => {
+      wsCostos.getCell(rco, i + 1).value = h
+      Object.assign(wsCostos.getCell(rco, i + 1), { style: hdrStyle(NAVY, WHITE, 9) })
+    })
+    wsCostos.getRow(rco).height = 18; rco++
+
+    form.fraccionesTerreno.forEach((f, idx) => {
+      const sup = n(f.sup) || areaT
+      const vu = n(f.valorUnit) || enNRTerreno || 0
+      const coef = n(f.coeficiente) || 1
+      const motivo = f.motivo === 'OTRO' ? (f.motivoOtro || 'Otro') : (f.motivo || 'NINGUNO')
+      const parcial = sup * vu * coef
+      totalTerr += parcial
+      const bg = idx % 2 === 0 ? LGRAY : WHITE
+      ;[sup, vu, coef, motivo, vu, '', '', parcial, ''].forEach((v, i) => {
+        wsCostos.getCell(rco, i + 1).value = v
+        Object.assign(wsCostos.getCell(rco, i + 1), { style: dataStyle(bg, false, typeof v === 'number' ? 'right' : 'left') })
+        if (i === 1 || i === 4 || i === 7) wsCostos.getCell(rco, i + 1).numFmt = '"$"#,##0.00'
+      })
+      wsCostos.getRow(rco).height = 16; rco++
+    })
+
+    wsCostos.mergeCells(`A${rco}:G${rco}`)
+    wsCostos.getCell(`A${rco}`).value = 'TOTAL VALOR DEL TERRENO:'
+    Object.assign(wsCostos.getCell(`A${rco}`), { style: hdrStyle(NAVY, WHITE, 10) })
+    wsCostos.getCell(rco, 8).value = totalTerr
+    wsCostos.getCell(rco, 8).numFmt = '"$"#,##0.00'
+    Object.assign(wsCostos.getCell(rco, 8), { style: goldStyle(11) })
+    wsCostos.getRow(rco).height = 20; rco += 2
+  }
+
+  // b) Construcción
+  if (form.construcciones?.length) {
+    wsCostos.mergeCells(`A${rco}:I${rco}`)
+    wsCostos.getCell(`A${rco}`).value = 'b) VALOR DE CONSTRUCCIÓN (C.R.N.)'
+    Object.assign(wsCostos.getCell(`A${rco}`), { style: hdrStyle(BLUE, WHITE, 11) })
+    wsCostos.getRow(rco).height = 18; rco++
+
+    ;['Tipo', 'Descripción', 'Área (m²)', 'CRN', 'F.Edad', 'F.Calidad', 'FRe', 'C.N.R. Unit.', 'Valor Total'].forEach((h, i) => {
+      wsCostos.getCell(rco, i + 1).value = h
+      Object.assign(wsCostos.getCell(rco, i + 1), { style: hdrStyle(NAVY, WHITE, 9) })
+    })
+    wsCostos.getRow(rco).height = 18; rco++
+
+    form.construcciones.forEach((c, idx) => {
+      const area = n(c.area) || n(form.areaConstruccionHabitable)
+      const crn = n(c.crn), edad = n(c.factorDemeritoEdad), cal = n(c.factorDemeritoCalidad)
+      const fre = edad * cal, cnrU = fre > 0 ? fre * crn : crn, vt = area * cnrU
+      totalCons += vt
+      const bg = idx % 2 === 0 ? LGRAY : WHITE
+      ;[c.tipo, c.descripcion, area, crn, edad, cal, fre > 0 ? fre : 0, cnrU, vt].forEach((v, i) => {
+        wsCostos.getCell(rco, i + 1).value = v
+        Object.assign(wsCostos.getCell(rco, i + 1), { style: dataStyle(bg, false, typeof v === 'number' ? 'right' : 'left') })
+        if ([3, 7, 8].includes(i)) wsCostos.getCell(rco, i + 1).numFmt = '"$"#,##0.00'
+      })
+      wsCostos.getRow(rco).height = 16; rco++
+    })
+
+    wsCostos.mergeCells(`A${rco}:G${rco}`)
+    wsCostos.getCell(`A${rco}`).value = 'SUBTOTAL VALOR DE CONSTRUCCIÓN:'
+    Object.assign(wsCostos.getCell(`A${rco}`), { style: hdrStyle(NAVY, WHITE, 10) })
+    wsCostos.getCell(rco, 9).value = totalCons
+    wsCostos.getCell(rco, 9).numFmt = '"$"#,##0.00'
+    Object.assign(wsCostos.getCell(rco, 9), { style: goldStyle(11) })
+    wsCostos.getRow(rco).height = 20; rco += 2
+  }
+
+  // c) Total Físico
+  const totalFisico = totalTerr + totalCons + totalInst
+  if (totalFisico > 0) {
+    wsCostos.mergeCells(`A${rco}:H${rco}`)
+    wsCostos.getCell(`A${rco}`).value = 'VALOR FÍSICO TOTAL (TERRENO + CONSTRUCCIÓN + I-ESPEC):'
+    Object.assign(wsCostos.getCell(`A${rco}`), { style: hdrStyle(GOLD, NAVY, 12) })
+    wsCostos.getCell(rco, 9).value = totalFisico
+    wsCostos.getCell(rco, 9).numFmt = '"$"#,##0.00'
+    Object.assign(wsCostos.getCell(rco, 9), { style: goldStyle(13) })
+    wsCostos.getRow(rco).height = 24
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 9. CONCLUSIÓN
+  // ────────────────────────────────────────────────────────────
+  const wsConc = wb.addWorksheet('Conclusión-1')
+  wsConc.columns = [
+    { width: 30 }, { width: 20 }, { width: 16 }, { width: 16 },
+    { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 },
+  ]
+  let rconc = addEncabezado(wsConc, 'X. CONCLUSIÓN DEL AVALÚO')
+
+  // Cuadro comparativo de enfoques
+  wsConc.mergeCells(`A${rconc}:H${rconc}`)
+  wsConc.getCell(`A${rconc}`).value = 'RESUMEN DE VALORES OBTENIDOS'
+  Object.assign(wsConc.getCell(`A${rconc}`), { style: hdrStyle(BLUE, WHITE, 12) })
+  wsConc.getRow(rconc).height = 20; rconc++
+
+  ;['Enfoque', 'Valor ($)', '% Relativo', 'Diferencia vs Mayor'].forEach((h, i) => {
+    wsConc.getCell(rconc, i + 1).value = h
+    Object.assign(wsConc.getCell(rconc, i + 1), { style: hdrStyle(NAVY, WHITE, 10) })
+  })
+  wsConc.getRow(rconc).height = 18; rconc++
+
+  const valMercado = n(form.valorMercado), valFisico2 = n(form.valorFisico), valRentas = n(form.valorRentas)
+  const maxVal = Math.max(valMercado, valFisico2, valRentas)
+  const enfoques = [
+    ['Valor Comparativo de Mercado', valMercado],
+    ['Valor Físico / V.N.R.', valFisico2],
+    ['Valor por Capitalización de Rentas', valRentas],
+  ].filter(([, v]) => v > 0)
+
+  enfoques.forEach(([lbl, val], idx) => {
+    const bg = idx % 2 === 0 ? LGRAY : WHITE
+    const pct = maxVal > 0 ? (val / maxVal * 100).toFixed(1) + '%' : '—'
+    const diff = maxVal > 0 ? val - maxVal : 0
+    ;[lbl, val, pct, diff !== 0 ? diff : '—'].forEach((v, i) => {
+      wsConc.getCell(rconc, i + 1).value = v
+      Object.assign(wsConc.getCell(rconc, i + 1), { style: dataStyle(bg, false, i > 0 ? 'right' : 'left') })
+      if (i === 1 || i === 3) wsConc.getCell(rconc, i + 1).numFmt = '"$"#,##0.00'
+    })
+    wsConc.getRow(rconc).height = 16; rconc++
+  })
+
+  // Conclusión final
+  rconc += 2
+  wsConc.mergeCells(`A${rconc}:H${rconc}`)
+  wsConc.getCell(`A${rconc}`).value = 'XII. CONCLUSIÓN DEL AVALÚO'
+  Object.assign(wsConc.getCell(`A${rconc}`), { style: hdrStyle(NAVY, WHITE, 13) })
+  wsConc.getRow(rconc).height = 22; rconc++
+
+  const concFields = [
+    ['Tipo de Avalúo', form.tipoAvaluo || '—'],
+    ['Enfoque Conclusivo', form.enfoqueConclusivo || (esRef ? 'Valor Referido Final' : 'Mercado')],
+    ['Declaración del Valuador', form.declaraciones || '—'],
+    ['Vigencia del Avalúo', form.vigenciaAvaluo || 'Seis Meses'],
+    ['Fecha del Avalúo', form.fechaAvaluo || '—'],
+  ]
+  concFields.forEach(([lbl, val]) => {
+    wsConc.mergeCells(`A${rconc}:C${rconc}`)
+    wsConc.getCell(`A${rconc}`).value = lbl
+    Object.assign(wsConc.getCell(`A${rconc}`), { style: dataStyle(LGRAY, true) })
+    wsConc.mergeCells(`D${rconc}:H${rconc}`)
+    wsConc.getCell(`D${rconc}`).value = val
+    Object.assign(wsConc.getCell(`D${rconc}`), { style: { ...dataStyle(WHITE), alignment: { wrapText: true } } })
+    wsConc.getRow(rconc).height = val.length > 80 ? 40 : 16; rconc++
+  })
+
+  rconc++
+  wsConc.mergeCells(`A${rconc}:C${rconc}`)
+  wsConc.getCell(`A${rconc}`).value = esRef ? 'VALOR REFERENCIADO:' : 'VALOR COMERCIAL:'
+  Object.assign(wsConc.getCell(`A${rconc}`), { style: hdrStyle(NAVY, GOLD, 12) })
+  wsConc.mergeCells(`D${rconc}:H${rconc}`)
+  wsConc.getCell(`D${rconc}`).value = valFinal
+  wsConc.getCell(`D${rconc}`).numFmt = '"$"#,##0.00'
+  Object.assign(wsConc.getCell(`D${rconc}`), { style: goldStyle(14) })
+  wsConc.getRow(rconc).height = 28; rconc++
+
+  if (form.valorConclusivoLetras) {
+    wsConc.mergeCells(`A${rconc}:H${rconc}`)
+    wsConc.getCell(`A${rconc}`).value = `(${form.valorConclusivoLetras.toUpperCase()})`
+    Object.assign(wsConc.getCell(`A${rconc}`), { style: { ...dataStyle(LGRAY, false, 'center'), alignment: { wrapText: true } } })
+    wsConc.getRow(rconc).height = 20; rconc++
+  }
+
+  // Datos del valuador
+  rconc += 2
+  wsConc.mergeCells(`A${rconc}:H${rconc}`)
+  wsConc.getCell(`A${rconc}`).value = 'DATOS DEL VALUADOR'
+  Object.assign(wsConc.getCell(`A${rconc}`), { style: hdrStyle(BLUE, WHITE, 11) })
+  wsConc.getRow(rconc).height = 18; rconc++
+
+  ;[
+    ['Nombre', form.peritoValuador || '—'],
+    ['Maestría / Especialidad', form.maestria || '—'],
+    ['Cédula Profesional', form.cedulaProfesional || '—'],
+    ['Registro SHF', form.noRegSHF || '—'],
+    ['Registro Estatal Peritos', form.regEstatalPeritos || '—'],
+    ['Domicilio', 'Norte 3  No.54 Altos 1  Tel: 2722174550  Col. Centro  Orizaba, Veracruz.'],
+  ].forEach(([lbl, val]) => {
+    wsConc.mergeCells(`A${rconc}:C${rconc}`)
+    wsConc.getCell(`A${rconc}`).value = lbl
+    Object.assign(wsConc.getCell(`A${rconc}`), { style: dataStyle(LGRAY, true) })
+    wsConc.mergeCells(`D${rconc}:H${rconc}`)
+    wsConc.getCell(`D${rconc}`).value = val
+    Object.assign(wsConc.getCell(`D${rconc}`), { style: dataStyle(WHITE) })
+    wsConc.getRow(rconc).height = 16; rconc++
+  })
+
+  // ────────────────────────────────────────────────────────────
+  // 10. DECLARACIONES Y ADVERTENCIAS
+  // ────────────────────────────────────────────────────────────
+  const wsDecl = wb.addWorksheet('Declaraciones')
+  wsDecl.columns = [
+    { width: 14 }, { width: 14 }, { width: 16 }, { width: 14 },
+    { width: 14 }, { width: 14 }, { width: 10 }, { width: 14 },
+  ]
+  let rdecl = addEncabezado(wsDecl, 'ANEXO — DECLARACIONES Y ADVERTENCIAS')
+
+  const DECL_FIJA_XL = form.declaracionFija && form.declaracionFija.trim()
+    ? form.declaracionFija.trim()
+    : 'LAS DECLARACIONES DE HECHOS CONTENIDAS EN EL PRESENTE ESTUDIO SON VERDADERAS Y CORRECTAS. NO TENEMOS INTERÉS PRESENTE O FUTURO EN LA PROPIEDAD QUE ES OBJETO DE ESTE AVALÚO, NO TENEMOS INTERÉS PERSONAL O PARCIAL CON RESPECTO A LAS PARTES INVOLUCRADAS; ADEMÁS DECLARAMOS QUE NO PARTICIPAMOS EN EL CAPITAL O EN LOS ÓRGANOS ADMINISTRATIVOS DEL PROMOVENTE Y MANIFESTAMOS COMPLETA INDEPENDENCIA CON LA PROPIEDAD DE LOS BIENES. LOS EMOLUMENTOS RELATIVOS AL DESARROLLO DEL TRABAJO VALUATORIO, NO ESTÁN CONDICIONADOS AL REPORTE DE UN VALOR PREDETERMINADO O DIRIGIDO HACIA UN VALOR QUE FAVOREZCA LA CAUSA DE UN CLIENTE.'
+
+  wsDecl.mergeCells(`A${rdecl}:H${rdecl + 5}`)
+  wsDecl.getCell(`A${rdecl}`).value = DECL_FIJA_XL
+  Object.assign(wsDecl.getCell(`A${rdecl}`), {
+    style: {
+      font: { size: 10, name: 'Arial', color: { argb: BLACK } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: LGRAY } },
+      alignment: { wrapText: true, vertical: 'top', horizontal: 'justify' },
+      border: {
+        top:    { style: 'medium', color: { argb: NAVY } },
+        bottom: { style: 'medium', color: { argb: NAVY } },
+        left:   { style: 'medium', color: { argb: NAVY } },
+        right:  { style: 'medium', color: { argb: NAVY } },
+      }
+    }
+  })
+  wsDecl.getRow(rdecl).height = 90; rdecl += 7
+
+  // Declaraciones del usuario
+  const declsXL = Array.isArray(form.declaracionesExtra)
+    ? form.declaracionesExtra.filter(d => d && d.trim().length > 0)
+    : []
+
+  declsXL.forEach((decl, i) => {
+    const numLineas = Math.ceil(decl.length / 120) + 1
+    wsDecl.mergeCells(`A${rdecl}:H${rdecl + numLineas}`)
+    wsDecl.getCell(`A${rdecl}`).value = decl.trim()
+    Object.assign(wsDecl.getCell(`A${rdecl}`), {
+      style: {
+        font: { size: 10, name: 'Arial', color: { argb: BLACK } },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: WHITE } },
+        alignment: { wrapText: true, vertical: 'top' },
+        border: {
+          top:    { style: 'hair', color: { argb: 'CCCCCC' } },
+          bottom: { style: 'hair', color: { argb: 'CCCCCC' } },
+          left:   { style: 'medium', color: { argb: NAVY } },
+          right:  { style: 'medium', color: { argb: NAVY } },
+        }
+      }
+    })
+    wsDecl.getRow(rdecl).height = Math.max(40, numLineas * 16)
+    rdecl += numLineas + 1
+  })
+
+  // ────────────────────────────────────────────────────────────
+  // 11. VALOR REFERIDO (solo para avalúos referidos)
+  // ────────────────────────────────────────────────────────────
+  if (esRef) {
+    const wsRef = wb.addWorksheet('Valor Referido')
+    wsRef.columns = [
+      { width: 32 }, { width: 24 }, { width: 20 }, { width: 20 },
+    ]
+    let rref = addEncabezado(wsRef, 'ANÁLISIS DEL VALOR REFERIDO — FACTOR INPC')
+
+    const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+    const inpcAct = n(form.inpcActual), inpcRef2 = n(form.inpcReferido)
+    const factorRef2 = inpcAct > 0 && inpcRef2 > 0 ? inpcRef2 / inpcAct : null
+    const valAct = n(form.valorActualConclusion || form.valorMercado || form.valorFisico)
+    const valRefFinal2 = n(form.valorReferidoFinal) || (factorRef2 && valAct ? valAct * factorRef2 : 0)
+    const labelAct = form.fechaAvaluo ? (() => { const m = form.fechaAvaluo.match(/^(\d{4})-(\d{2})/); return m ? `${MESES[parseInt(m[2])]} ${m[1]}` : form.fechaAvaluo })() : '—'
+    const labelRef2 = form.mesReferido && form.anioReferido ? `${MESES[parseInt(form.mesReferido)] || ''} ${form.anioReferido}` : '—'
+
+    const refFields = [
+      ['Fecha del Avalúo Actual', labelAct],
+      ['Avalúo Actual ($)', valAct > 0 ? valAct : '—'],
+      [`INPC — ${labelAct}`, inpcAct > 0 ? inpcAct : '—'],
+      ['Periodo Referido', labelRef2],
+      [`INPC — ${labelRef2}`, inpcRef2 > 0 ? inpcRef2 : '—'],
+      ['Factor INPC', factorRef2 ? factorRef2.toFixed(8) : '—'],
+      ['Fórmula', factorRef2 && valAct > 0 ? `${valAct.toLocaleString('es-MX')} × ${factorRef2.toFixed(8)} = ${(valAct * factorRef2).toLocaleString('es-MX')}` : '—'],
+    ]
+
+    refFields.forEach(([lbl, val], i) => {
+      wsRef.mergeCells(`A${rref}:B${rref}`)
+      wsRef.getCell(`A${rref}`).value = lbl
+      Object.assign(wsRef.getCell(`A${rref}`), { style: dataStyle(LGRAY, true) })
+      wsRef.mergeCells(`C${rref}:D${rref}`)
+      wsRef.getCell(`C${rref}`).value = val
+      const isNum = typeof val === 'number'
+      Object.assign(wsRef.getCell(`C${rref}`), { style: dataStyle(WHITE, false, isNum ? 'right' : 'left') })
+      if (isNum && i === 1) wsRef.getCell(`C${rref}`).numFmt = '"$"#,##0.00'
+      wsRef.getRow(rref).height = 16; rref++
+    })
+
+    rref += 2
+    wsRef.mergeCells(`A${rref}:B${rref}`)
+    wsRef.getCell(`A${rref}`).value = 'VALOR REFERENCIADO DEL INMUEBLE:'
+    Object.assign(wsRef.getCell(`A${rref}`), { style: hdrStyle(NAVY, GOLD, 12) })
+    wsRef.mergeCells(`C${rref}:D${rref}`)
+    wsRef.getCell(`C${rref}`).value = valRefFinal2 > 0 ? valRefFinal2 : '—'
+    if (valRefFinal2 > 0) wsRef.getCell(`C${rref}`).numFmt = '"$"#,##0.00'
+    Object.assign(wsRef.getCell(`C${rref}`), { style: goldStyle(14) })
+    wsRef.getRow(rref).height = 28; rref++
+
+    if (form.valorConclusivoLetras) {
+      wsRef.mergeCells(`A${rref}:D${rref}`)
+      wsRef.getCell(`A${rref}`).value = `(${form.valorConclusivoLetras.toUpperCase()})`
+      Object.assign(wsRef.getCell(`A${rref}`), { style: { ...dataStyle(LGRAY, false, 'center'), alignment: { wrapText: true } } })
+      wsRef.getRow(rref).height = 18
+    }
+  }
+
+  // ── Generar y descargar el archivo ───────────────────────────
+  const folio = (form.folioInterno || 'avaluo').replace(/[^a-zA-Z0-9\-_]/g, '_')
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${folio}_avaluo.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 3000)
 }

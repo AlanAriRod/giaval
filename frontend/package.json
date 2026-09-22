@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "giaval": "file:..",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
