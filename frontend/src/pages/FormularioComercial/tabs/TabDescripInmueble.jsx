@@ -7,8 +7,63 @@
 // Los demás campos (edad, niveles, acabados, etc.) sin cambios
 
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, Check } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, Eye, EyeOff } from 'lucide-react'
 import styles from '../Formulario.module.css'
+
+// ── Opciones de materiales ────────────────────────────────────
+const OPTS_PISO = [
+  'LOSETA DE PASTA','LOSETA DE CERAMICA','CEMENTO PULIDO','FIRME DE CONCRETO',
+]
+const OPTS_MURO = [
+  'TABIQUE ROJO ACABADO APARENTE','CORRIDA DE YESO CON PINTURA VINILICA',
+  'APLANADO FINO CON PINTURA VINILICA',
+]
+const OPTS_PLAFON = [
+  'CORRIDA DE YESO PINTURA VINILICA','ESTRUCTURA METALICA CON LAMINA DE ZINC',
+]
+
+function SelectMaterial({ value, opts, onChange }) {
+  // esOtro: el valor guardado no está en la lista de opciones
+  const esOtro = value !== undefined && value !== null && !opts.includes(value)
+  // modoOtro: el usuario eligió "OTRO" en el select (aunque el campo esté vacío)
+  const [modoOtro, setModoOtro] = useState(esOtro)
+
+  const handleSelect = (e) => {
+    if (e.target.value === '__otro__') {
+      setModoOtro(true)
+      onChange('')  // deja el valor vacío para que el usuario escriba
+    } else {
+      setModoOtro(false)
+      onChange(e.target.value)
+    }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'.3rem' }}>
+      <select
+        value={(esOtro || modoOtro) ? '__otro__' : (value || '')}
+        onChange={handleSelect}
+        style={{ padding:'.35rem .5rem', borderRadius:'6px', fontSize:'.8rem',
+          border:`1px solid ${modoOtro||esOtro ? '#c9972a' : 'var(--border)'}`,
+          background:'var(--bg-input)', color:'var(--text-primary)', width:'100%' }}>
+        <option value="">— Selecciona —</option>
+        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+        <option value="__otro__">OTRO (ESPECIFICAR)</option>
+      </select>
+      {(modoOtro || esOtro) && (
+        <input
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Escribe el material…"
+          autoFocus={modoOtro && !esOtro}
+          style={{ padding:'.3rem .5rem', borderRadius:'6px', fontSize:'.8rem',
+            border:'1px solid #c9972a', background:'var(--bg-input)',
+            color:'var(--text-primary)', width:'100%' }}
+        />
+      )}
+    </div>
+  )
+}
 
 const CALIDADES = ['EXCELENTE','MUY BUENO','BUENO','REGULAR','MALO','MUY MALO']
 const ESTADOS_CONS = ['EXCELENTE','MUY BUENO','BUENO','REGULAR','DETERIORADO','MUY DETERIORADO','EN RUINAS']
@@ -115,6 +170,9 @@ function EspacioItem({ espacio, onUpdate, onDelete, onRename }) {
 export default function TabDescripInmueble({ form, update }) {
   const [nuevoEspacio, setNuevoEspacio] = useState('')
   const [mostrarAgregar, setMostrarAgregar] = useState(false)
+  const [mostrarAcabados, setMostrarAcabados] = useState(
+    !!(form.acabados && form.acabados.some(a => a.espacio||a.piso||a.muro||a.plafon))
+  )
 
   // Leer o inicializar espacios dinámicos
   const espacios = form.espaciosHabitacion?.length > 0
@@ -336,49 +394,78 @@ export default function TabDescripInmueble({ form, update }) {
         </div>
       </Seccion>
 
-      {/* ── Acabados ── */}
+      {/* ── Acabados — toggle + selects ── */}
       <Seccion titulo="Tabla de Acabados">
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:'600px' }}>
-            <thead>
-              <tr style={{ background:'#0f172a' }}>
-                {['Espacio','Piso','Muro','Plafón',''].map((h,i)=>(
-                  <th key={i} style={{ padding:'.5rem .7rem', textAlign:'left',
-                    fontSize:'.72rem', fontWeight:700, color:'#94a3b8',
-                    textTransform:'uppercase', letterSpacing:'.04em',
-                    borderBottom:'1px solid #1e293b' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {acabados.map((a,i)=>(
-                <tr key={i} style={{ background:i%2===0?'var(--bg-card)':'var(--bg-input)' }}>
-                  {['espacio','piso','muro','plafon'].map(campo=>(
-                    <td key={campo} style={{ padding:'.3rem .4rem', verticalAlign:'middle' }}>
-                      <input className={styles.input} value={a[campo]||''}
-                        onChange={e=>updAcabado(i,campo,e.target.value)}
-                        style={{ padding:'.28rem .4rem', fontSize:'.82rem', textTransform:'uppercase' }}/>
-                    </td>
-                  ))}
-                  <td style={{ padding:'.3rem .4rem', verticalAlign:'middle', textAlign:'center' }}>
-                    <button onClick={()=>removeAcabado(i)}
-                      style={{ padding:'.25rem .35rem', borderRadius:'5px', border:'1px solid #fecaca',
-                        background:'#fef2f2', color:'#dc2626', cursor:'pointer' }}>
-                      <Trash2 size={12}/>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ marginBottom:'1rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap' }}>
+          <button type="button" onClick={()=>setMostrarAcabados(v=>!v)}
+            style={{ display:'inline-flex', alignItems:'center', gap:'.5rem',
+              padding:'.5rem 1rem', borderRadius:'8px', cursor:'pointer',
+              border:`1.5px solid ${mostrarAcabados?'#1e3a5f':'var(--border)'}`,
+              background:mostrarAcabados?'rgba(30,58,95,.08)':'var(--bg-card)',
+              color:mostrarAcabados?'#1e3a5f':'var(--text-muted)',
+              fontSize:'.82rem', fontWeight:700 }}>
+            {mostrarAcabados?<EyeOff size={15}/>:<Eye size={15}/>}
+            {mostrarAcabados?'Ocultar tabla de materiales':'Mostrar tabla de materiales'}
+          </button>
+          {!mostrarAcabados&&(
+            <span style={{ fontSize:'.75rem', color:'var(--text-muted)', fontStyle:'italic' }}>
+              Actívala si necesitas registrar acabados por espacio.
+            </span>
+          )}
         </div>
-        <button onClick={addAcabado}
-          style={{ marginTop:'.75rem', display:'inline-flex', alignItems:'center', gap:'.35rem',
-            padding:'.4rem .85rem', borderRadius:'7px', border:'1px solid var(--border)',
-            background:'var(--bg-card)', color:'var(--text-secondary)', fontSize:'.82rem',
-            fontWeight:600, cursor:'pointer' }}>
-          <Plus size={13}/> Agregar espacio
-        </button>
+
+        {mostrarAcabados&&(
+          <>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:'700px' }}>
+                <thead>
+                  <tr style={{ background:'#0f172a' }}>
+                    {['Espacio','Piso','Muro','Plafón',''].map((h,i)=>(
+                      <th key={i} style={{ padding:'.5rem .7rem', textAlign:'left',
+                        fontSize:'.72rem', fontWeight:700, color:'#94a3b8',
+                        textTransform:'uppercase', letterSpacing:'.04em',
+                        borderBottom:'1px solid #1e293b' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {acabados.map((a,i)=>(
+                    <tr key={i} style={{ background:i%2===0?'var(--bg-card)':'var(--bg-input)' }}>
+                      <td style={{ padding:'.3rem .4rem', verticalAlign:'middle' }}>
+                        <input className={styles.input} value={a.espacio||''}
+                          onChange={e=>updAcabado(i,'espacio',e.target.value)}
+                          style={{ padding:'.28rem .4rem', fontSize:'.82rem', textTransform:'uppercase' }}/>
+                      </td>
+                      <td style={{ padding:'.3rem .4rem', verticalAlign:'top', minWidth:'170px' }}>
+                        <SelectMaterial value={a.piso||''} opts={OPTS_PISO} onChange={v=>updAcabado(i,'piso',v)}/>
+                      </td>
+                      <td style={{ padding:'.3rem .4rem', verticalAlign:'top', minWidth:'210px' }}>
+                        <SelectMaterial value={a.muro||''} opts={OPTS_MURO} onChange={v=>updAcabado(i,'muro',v)}/>
+                      </td>
+                      <td style={{ padding:'.3rem .4rem', verticalAlign:'top', minWidth:'210px' }}>
+                        <SelectMaterial value={a.plafon||''} opts={OPTS_PLAFON} onChange={v=>updAcabado(i,'plafon',v)}/>
+                      </td>
+                      <td style={{ padding:'.3rem .4rem', verticalAlign:'middle', textAlign:'center' }}>
+                        <button onClick={()=>removeAcabado(i)}
+                          style={{ padding:'.25rem .35rem', borderRadius:'5px', border:'1px solid #fecaca',
+                            background:'#fef2f2', color:'#dc2626', cursor:'pointer' }}>
+                          <Trash2 size={12}/>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={addAcabado}
+              style={{ marginTop:'.75rem', display:'inline-flex', alignItems:'center', gap:'.35rem',
+                padding:'.4rem .85rem', borderRadius:'7px', border:'1px solid var(--border)',
+                background:'var(--bg-card)', color:'var(--text-secondary)', fontSize:'.82rem',
+                fontWeight:600, cursor:'pointer' }}>
+              <Plus size={13}/> Agregar espacio
+            </button>
+          </>
+        )}
       </Seccion>
 
       {/* ── Instalaciones Especiales ── */}

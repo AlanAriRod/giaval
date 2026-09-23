@@ -7,6 +7,7 @@
 //   - Pie de página del valuador
 // Este tab es la "fuente de verdad" que alimenta TabValorReferido
 
+import QRConclusionWidget from '../../../components/QRConclusionWidget'
 import { useMemo } from 'react'
 import styles from '../../FormularioComercial/Formulario.module.css'
 
@@ -278,6 +279,10 @@ export default function TabConclusionReferido({ form, update }) {
       </div>
 
       {/* Botón → Valor Referido */}
+
+      {/* QR del despacho */}
+      <QRConclusionWidget />
+
       {valorConclusivoFinal>0&&(
         <div style={{marginTop:'1.25rem',padding:'1rem',background:'#eff6ff',
           border:'1px solid #bfdbfe',borderRadius:'10px',

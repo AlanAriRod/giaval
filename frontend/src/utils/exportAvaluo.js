@@ -1428,15 +1428,47 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     doc.text(dLines,MG,y); y+=dLines.length*4+6
   }
 
-  // Firma
-  checkY(32); y+=8
-  doc.setDrawColor(...NAVY); doc.setLineWidth(0.4); doc.line(MG+CW/4,y,MG+CW*3/4,y); y+=4
+  // Firma + QR del despacho
+  checkY(52); y+=8
+
+  // QR a la derecha de la firma
+  const QR_SIZE = 28
+  const qrX = PW - MG - QR_SIZE - 2
+  const firmaStartY = y
+
+  // Línea de firma centrada (pero dejando espacio al QR)
+  doc.setDrawColor(...NAVY); doc.setLineWidth(0.4)
+  doc.line(MG+CW/4, y, MG+CW*3/4 - QR_SIZE/2, y); y+=4
   doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY)
-  doc.text(form.peritoValuador||'Perito Valuador',PW/2,y,{align:'center'}); y+=4
+  doc.text(form.peritoValuador||'Perito Valuador', PW/2 - QR_SIZE/4, y, {align:'center'}); y+=4
   doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...DGRAY)
-  doc.text(form.maestria||'',PW/2,y,{align:'center'}); y+=4
-  doc.text(`Cédula: ${form.cedulaProfesional||'—'}   Reg. SHF: ${form.noRegSHF||'—'}`,PW/2,y,{align:'center'})
-  if(form.regEstatalPeritos){ y+=4; doc.text(`Reg. Estatal: ${form.regEstatalPeritos}`,PW/2,y,{align:'center'}) }
+  doc.text(form.maestria||'', PW/2 - QR_SIZE/4, y, {align:'center'}); y+=4
+  doc.text(`Cédula: ${form.cedulaProfesional||'—'}   Reg. SHF: ${form.noRegSHF||'—'}`, PW/2 - QR_SIZE/4, y, {align:'center'})
+  if(form.regEstatalPeritos){ y+=4; doc.text(`Reg. Estatal: ${form.regEstatalPeritos}`, PW/2 - QR_SIZE/4, y, {align:'center'}) }
+
+  // Insertar QR — se carga como imagen desde /qr_giaval.png
+  try {
+    await new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth || 200
+          canvas.height = img.naturalHeight || 200
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          const qrData = canvas.toDataURL('image/png')
+          doc.addImage(qrData, 'PNG', qrX, firmaStartY - 4, QR_SIZE, QR_SIZE, undefined, 'FAST')
+          doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(...DGRAY)
+          doc.text('QR para validar', qrX + QR_SIZE/2, firmaStartY + QR_SIZE + 1, {align:'center'})
+        } catch(e) { console.warn('[QR] No se pudo insertar:', e.message) }
+        resolve()
+      }
+      img.onerror = () => { console.warn('[QR] No se pudo cargar la imagen del QR'); resolve() }
+      img.src = '/qr_giaval.png'
+    })
+  } catch(e) { console.warn('[QR] Error:', e.message) }
 
   // Portada: valor conclusivo — para referidos usa valorReferidoFinal
   // Para referidos: etiqueta "VALOR REFERENCIADO DEL INMUEBLE"

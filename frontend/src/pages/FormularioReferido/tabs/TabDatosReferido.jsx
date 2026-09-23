@@ -326,10 +326,14 @@ export default function TabDatosReferido({ form, update }) {
             </div>
             <div className={styles.field}>
               <label className={`${styles.label} ${styles.req}`}>Bien que se Valúa</label>
-              <select className={styles.select} value={form.bienQueSeValua||'Casa Habitación'}
-                onChange={e=>update('bienQueSeValua',e.target.value)}>
-                {BIENES.map(b=><option key={b}>{b}</option>)}
-              </select>
+              <SelectOtro
+                label=""
+                campo="bienQueSeValua"
+                value={form.bienQueSeValua||'Casa Habitación'}
+                opts={BIENES.filter(b=>b!=='Otro')}
+                update={update}
+                placeholder="Especifica el bien que se valúa…"
+              />
             </div>
             <div className={`${styles.field} ${styles.span2}`}>
               <label className={styles.label}>Objeto del Avalúo</label>

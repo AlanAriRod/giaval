@@ -3,6 +3,7 @@
 // el enfoque que REALMENTE ganó ("SE CONCLUYE CON EL VALOR COMPARATIVO DE MERCADO"
 // si mercado fue el mayor, no el texto genérico "MAYOR VALOR").
 // También agrega useEffect que auto-llena declaraciones al cambiar enfoque.
+import QRConclusionWidget from '../../../components/QRConclusionWidget'
 import { useMemo, useEffect, useState } from 'react'
 import styles from '../Formulario.module.css'
 import { useAuth } from '../../../context/AuthContext'
@@ -671,6 +672,9 @@ function EstadoAvaluo({ avaluoId, estadoInicial }) {
             ⚠ Guarda el avalúo primero
           </span>
         )}
+
+      {/* QR del despacho para validar información */}
+      <QRConclusionWidget />
       </div>
     </div>
   )
