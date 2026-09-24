@@ -144,16 +144,71 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
         BLACK=[15,23,42],RED=[220,38,38],GREEN=[22,163,74],BLUE=[37,99,235]
 
   // ── Helpers ──────────────────────────────────────────────────────
+  // Logo cargado desde /logo_giaval.png (igual que el QR)
+  // Se convierte a JPEG via Canvas para que jsPDF lo acepte
+  const LOGO_B64 = await new Promise((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width  = img.naturalWidth  || 469
+        canvas.height = img.naturalHeight || 293
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#FFFFFF'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      } catch(e) { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = '/logo_giaval.png'
+  })
+  // Calcular fecha de vencimiento según vigencia
+  const calcFechaVigencia = () => {
+    if (!form.fechaAvaluo) return form.vigenciaAvaluo || 'Seis Meses'
+    const meses = { 'Tres Meses':3, 'Seis Meses':6, 'Doce Meses':12 }
+    const m = meses[form.vigenciaAvaluo] || 6
+    const d = new Date(form.fechaAvaluo)
+    d.setMonth(d.getMonth() + m)
+    return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})
+  }
+
   const addPage = () => {
     doc.addPage(); pageNum++
-    doc.setFillColor(...NAVY); doc.rect(0,0,PW,12,'F')
-    doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(7)
-    const tipoLabel = esReferido ? 'AVALÚO REFERIDO' : 'AVALÚO COMERCIAL'
-    doc.text(`GIAVAL — ${tipoLabel}`, MG, 5)
-    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(200,200,200)
-    doc.text(form.folioInterno||'', MG, 10)
-    doc.text(form.fechaAvaluo||'', PW-MG, 10, {align:'right'})
-    y=17
+    // Encabezado blanco con línea dorada
+    doc.setFillColor(255,255,255); doc.rect(0,0,PW,16,'F')
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.5); doc.line(0,16,PW,16)
+
+    // Logo izquierda — más pequeño para no amontonarse
+    if(LOGO_B64) try { doc.addImage(LOGO_B64,'PNG',MG,1,18,12,undefined,'FAST') } catch(e) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...NAVY)
+      doc.text('GIAVAL',MG,12)
+    }
+
+    // Etiqueta + valor pegados en la misma línea, alineados a la derecha
+    const RGT = PW - MG - 1
+    doc.setFontSize(6.5)
+    // Etiqueta normal + valor negrita, juntos a la derecha, Y ajustadas a header de 16mm
+    doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+    doc.text('FOLIO INTERNO:', RGT - doc.getTextWidth(form.folioInterno||'—') - 1, 4.5, {align:'right'})
+    doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+    doc.text(form.folioInterno||'—', RGT, 4.5, {align:'right'})
+
+    doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+    doc.text('FECHA DE AVALÚO:', RGT - doc.getTextWidth(form.fechaAvaluo||'—') - 1, 9, {align:'right'})
+    doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+    doc.text(form.fechaAvaluo||'—', RGT, 9, {align:'right'})
+
+    if(!esReferido){
+      const vig = calcFechaVigencia()
+      doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+      doc.text('VIGENCIA:', RGT - doc.getTextWidth(vig) - 1, 13.5, {align:'right'})
+      doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+      doc.text(vig, RGT, 13.5, {align:'right'})
+    }
+
+    y = 20
   }
 
   const checkY = (n=18) => { if(y+n>272) addPage() }
@@ -351,13 +406,31 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   //  PORTADA
   // ═══════════════════════════════════════════
   pageNum=1
-  doc.setFillColor(...NAVY); doc.rect(0,0,PW,12,'F')
-  doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
-  doc.text(`GIAVAL — ${esReferido ? 'AVALÚO REFERIDO' : 'AVALÚO COMERCIAL'}`, MG, 5)
-  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(200,200,200)
-  doc.text(form.folioInterno||'',MG,10)
-  doc.text(form.fechaAvaluo||'',PW-MG,10,{align:'right'})
-  y=18
+  // Portada: mismo encabezado que el resto de páginas
+  doc.setFillColor(255,255,255); doc.rect(0,0,PW,20,'F')
+  doc.setDrawColor(...GOLD); doc.setLineWidth(0.5); doc.line(0,20,PW,20)
+  if(LOGO_B64) try { doc.addImage(LOGO_B64,'PNG',MG,1,26,18,undefined,'FAST') } catch(e) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...NAVY)
+    doc.text('GIAVAL',MG,12)
+  }
+  const RGTP = PW-MG-1
+  doc.setFontSize(6.5)
+  doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+  doc.text('FOLIO INTERNO:  ', RGTP - doc.getTextWidth(form.folioInterno||'—'), 6, {align:'right'})
+  doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+  doc.text(form.folioInterno||'—', RGTP, 6, {align:'right'})
+  doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+  doc.text('FECHA DE AVALÚO:  ', RGTP - doc.getTextWidth(form.fechaAvaluo||'—'), 12, {align:'right'})
+  doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+  doc.text(form.fechaAvaluo||'—', RGTP, 12, {align:'right'})
+  if(!esReferido){
+    const vigP = calcFechaVigencia()
+    doc.setFont('helvetica','normal'); doc.setTextColor(...DGRAY)
+    doc.text('VIGENCIA:  ', RGTP - doc.getTextWidth(vigP), 18, {align:'right'})
+    doc.setFont('helvetica','bold'); doc.setTextColor(...NAVY)
+    doc.text(vigP, RGTP, 18, {align:'right'})
+  }
+  y=25
 
   doc.setFillColor(...NAVY); doc.rect(MG,y,CW,26,'F')
   doc.setTextColor(...GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(14)
@@ -563,11 +636,13 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     ['Núm. de Frentes', form.numeroFrente],
     ['Servidumbres', form.servidumbre||'Ninguna'],
   ])
-  y+=3; subTit('Datos de la Escritura / Notaría')
-  grid3([
-    ['Notario',form.notarioNombre],['Núm. Notaría',form.numeroNotario],['Ciudad',form.notarioCiudad],
-    ['Núm. Escritura',form.numeroEscritura],['Fecha Escritura',form.fechaEscritura],['Cuenta Predial',form.cuentaPredial],
-  ])
+  if(!esReferido){
+    y+=3; subTit('Datos de la Escritura / Notaría')
+    grid3([
+      ['Notario',form.notarioNombre],['Núm. Notaría',form.numeroNotario],['Ciudad',form.notarioCiudad],
+      ['Núm. Escritura',form.numeroEscritura],['Fecha Escritura',form.fechaEscritura],['Cuenta Predial',form.cuentaPredial],
+    ])
+  }
 
   // ═══════════════════════════════════════════
   //  III. DESCRIPCIÓN DEL INMUEBLE
@@ -575,44 +650,54 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   addPage()
   secTit('III. Descripción del Inmueble')
   if(form.descripcionInmueble){
+    y += 9  // Espacio generoso entre título y cuadro de descripción
     checkY(20)
     doc.setFillColor(...LGRAY); doc.setDrawColor(...NAVY); doc.setLineWidth(0.15)
-    doc.rect(MG,y,CW,6,'FD')
+    doc.rect(MG,y,CW,7,'FD')
     doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...NAVY)
-    doc.text('DESCRIPCIÓN DEL INMUEBLE', MG+2, y+4)
-    y+=7.5
+    doc.text('DESCRIPCIÓN DEL INMUEBLE', MG+2, y+4.8)
+    y+=10  // salir del cuadro azul + margen antes del texto
     doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLACK)
-    const descLines=doc.splitTextToSize(form.descripcionInmueble.toUpperCase(),CW)
+    const descLines=doc.splitTextToSize(form.descripcionInmueble.toUpperCase(),CW-2)
     descLines.forEach(line=>{ checkY(4.5); doc.text(line,MG,y); y+=4.5 })
     y+=4
   }
-  grid3([
-    ['Tipo de Construcción',form.tiposConstruccion],['Calidad/Clasif.',form.calidadClasificacion],
-    ['Nº de Niveles',form.numNiveles!=null?String(form.numNiveles):''],
-    ['Edad Aprox.',form.edadAproximada?`${form.edadAproximada} años`:''],
-    ['Vida Total',form.vidaTotal?`${form.vidaTotal} años`:''],
-    ['Vida Remanente',(form.vidaTotal&&form.edadAproximada)?`${n(form.vidaTotal)-n(form.edadAproximada)} años`:''],
-    ['Estado Conservación',form.estadoConservacion],['Calidad Proyecto',form.calidadProyecto],
-    ['Uso Actual',form.usoActual],
-    ['Recámaras',form.numRecamaras?String(form.numRecamaras):''],
-    ['Baños Completos',form.numBanosCompletos?String(form.numBanosCompletos):''],
-    ['Medios Baños',form.numMediosBanos?String(form.numMediosBanos):''],
-    ['Estacionamientos',form.estacionamientos?String(form.estacionamientos):''],
-    ['Elevador',form.elevador],['Cocinas',form.numCocina?String(form.numCocina):''],
-    ['½ Baños',form.numMediosBanos?String(form.numMediosBanos):''],
-  ])
-  if(form.densidadHabitacional||form.intensidadConstruccion||form.caracteristicasPanoramicas){
-    grid3([['Densidad Habitacional',form.densidadHabitacional||''],['Intensidad Construcción',form.intensidadConstruccion||''],['Caract. Panorámicas',form.caracteristicasPanoramicas||'']])
+  // Toggles: si no existen (avalúos viejos) se muestran por defecto
+  const mostrarCaractPDF     = form.mostrarSeccion_caracts    !== false
+  const mostrarEspaciosPDF   = form.mostrarSeccion_espacios   !== false
+  const mostrarEstructuraPDF = form.mostrarSeccion_estructura !== false
+  const mostrarInstPDF       = form.mostrarSeccion_inst       !== false
+  const mostrarAcabadosPDF   = form.mostrarSeccion_acabados   === true
+
+  if(mostrarCaractPDF){
+    grid3([
+      ['Tipo de Construcción',form.tiposConstruccion],['Calidad/Clasif.',form.calidadClasificacion],
+      ['Nº de Niveles',form.numNiveles!=null?String(form.numNiveles):''],
+      ['Edad Aprox.',form.edadAproximada?`${form.edadAproximada} años`:''],
+      ['Vida Total',form.vidaTotal?`${form.vidaTotal} años`:''],
+      ['Vida Remanente',(form.vidaTotal&&form.edadAproximada)?`${n(form.vidaTotal)-n(form.edadAproximada)} años`:''],
+      ['Estado Conservación',form.estadoConservacion],['Calidad Proyecto',form.calidadProyecto],
+      ['Uso Actual',form.usoActual],
+    ])
+    if(form.densidadHabitacional||form.intensidadConstruccion||form.caracteristicasPanoramicas){
+      grid3([['Densidad Habitacional',form.densidadHabitacional||''],['Intensidad Construcción',form.intensidadConstruccion||''],['Caract. Panorámicas',form.caracteristicasPanoramicas||'']])
+    }
   }
-  if(form.estructura){ y+=2; campo('Estructura',form.estructura) }
-  const instFlds=[['Hidráulica',form.hidraulico],['Eléctrica',form.electrico],['Carpintería',form.carpinteria],['Herrería',form.herreria]]
-  instFlds.filter(([,v])=>v).forEach(([l,v])=>campo(l,v))
-  if(form.acabados?.length){
+  if(mostrarEspaciosPDF && form.espaciosHabitacion?.length){
+    grid3(form.espaciosHabitacion.filter(e=>e.valor).map(e=>[e.label, e.valor]))
+  }
+  if(mostrarEstructuraPDF && form.estructura){ y+=2; campo('Estructura',form.estructura) }
+  if(mostrarInstPDF){
+    const instFlds=[['Hidráulica',form.hidraulico],['Eléctrica',form.electrico],['Carpintería',form.carpinteria],['Herrería',form.herreria]]
+    instFlds.filter(([,v])=>v).forEach(([l,v])=>campo(l,v))
+  }
+  const acabadosConDatos = (form.acabados||[]).filter(a=>a.espacio||a.piso||a.muro||a.plafon)
+  if(mostrarAcabadosPDF && acabadosConDatos.length>0){
     y+=3; subTit('Tabla de Acabados por Espacio Arquitectónico')
     autoTable(doc,{
       startY:y,margin:{left:MG,right:MG},
       head:[['Espacio','Piso','Muro','Plafón']],
-      body:form.acabados.map(a=>[a.espacio,a.piso,a.muro,a.plafon]),
+      body:acabadosConDatos.map(a=>[a.espacio||'—',a.piso||'—',a.muro||'—',a.plafon||'—']),
       headStyles:{fillColor:NAVY,textColor:WHITE,fontSize:6.5,fontStyle:'bold'},
       bodyStyles:{fontSize:6.5},alternateRowStyles:{fillColor:LGRAY},
     })
@@ -726,11 +811,25 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
       ['ZONA','Factor que pondera las condiciones generales de la zona donde se ubica el comparable en relación con la zona del inmueble valuado.'],
     ]
     justFactores.forEach(([factor,texto])=>{
-      checkY(10)
+      // Calcular altura real del bloque para checkY correcto
+      doc.setFontSize(6.5)
+      const jlines = doc.splitTextToSize(texto, CW - 6)
+      const blockH = Math.max(jlines.length * 4 + 7, 10)
+      checkY(blockH)
+
+      // Fondo alternado para cada factor
+      doc.setFillColor(...LGRAY)
+      doc.rect(MG, y, CW, blockH - 2, 'F')
+
+      // Etiqueta en negrita navy
       doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...NAVY)
-      doc.text(factor+':', MG, y)
+      doc.text(factor + ':', MG + 2, y + 4.5)
+
+      // Texto en la línea de abajo, indentado
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...BLACK)
-      const jlines=doc.splitTextToSize(texto,CW-28); doc.text(jlines[0],MG+28,y); y+=4.5
+      doc.text(jlines, MG + 4, y + 4.5 + 4.5, { lineHeightFactor: 1.15 })
+
+      y += blockH
     })
     y+=3
   }

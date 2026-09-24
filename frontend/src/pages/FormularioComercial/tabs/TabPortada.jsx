@@ -64,6 +64,20 @@ export default function TabPortada({ form, update, hideVigencia=false, showFecha
                   onChange={e=>update('vigenciaAvaluo',e.target.value)}>
                   {VIGENCIAS.map(v=><option key={v}>{v}</option>)}
                 </select>
+                {/* Mostrar fecha calculada de vencimiento */}
+                {form.fechaAvaluo && (() => {
+                  const meses = {'Tres Meses':3,'Seis Meses':6,'Doce Meses':12}
+                  const m = meses[form.vigenciaAvaluo||'Seis Meses'] || 6
+                  const d = new Date(form.fechaAvaluo)
+                  d.setMonth(d.getMonth() + m)
+                  const fecha = d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})
+                  return (
+                    <span style={{ fontSize:'.72rem', color:'var(--text-muted)', marginTop:'.2rem',
+                      display:'block' }}>
+                      Vence: <strong style={{ color:'var(--text-secondary)' }}>{fecha}</strong>
+                    </span>
+                  )
+                })()}
               </div>
             )}
             {showFechaReferida&&(
