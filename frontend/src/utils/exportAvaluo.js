@@ -441,7 +441,7 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
   doc.text(form.maestria||'',PW/2,y+25,{align:'center'})
   y+=30
 
-  doc.setFillColor(...GOLD); doc.rect(MG,y,CW,9,'F')
+  doc.setFillColor(184,196,208); doc.rect(MG,y,CW,9,'F')
   doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(10)
   doc.text((form.tipoAvaluo||'AVALÚO COMERCIAL').toUpperCase(), PW/2, y+6.5, {align:'center'})
   y+=13
@@ -1577,19 +1577,40 @@ export async function exportarPDF(formOriginal, avaluoMeta={}) {
     : (n(form.valorMercado) || n(form.valorFisico) || n(form.valorRentas))
   if(valConclPortada>0){
     doc.setPage(1)
-    // pyBox ajustado a 258 para no pisarse con la foto más grande
-    const pyBox=258
     const lblPortada = esReferido
       ? 'VALOR REFERENCIADO DEL INMUEBLE:'
       : 'VALOR CONCLUSIVO DEL INMUEBLE:'
-    doc.setFillColor(...GOLD); doc.rect(MG,pyBox,CW,22,'F')
-    doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-    doc.text(lblPortada,PW/2,pyBox+5,{align:'center'})
-    doc.setFontSize(16); doc.text(fmtM(valConclPortada),PW/2,pyBox+14,{align:'center'})
-    if(form.valorConclusivoLetras){
-      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(50,40,20)
-      const letBrief=doc.splitTextToSize(form.valorConclusivoLetras.toUpperCase(),CW-4)
-      doc.text(letBrief[0]||'',PW/2,pyBox+20,{align:'center'})
+
+    // Calcular cuántas líneas ocupa el texto en letras
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+    const letrasUp = (form.valorConclusivoLetras||'').toUpperCase()
+    const letLines = letrasUp
+      ? doc.splitTextToSize(letrasUp, CW - 10)
+      : []
+    // Altura: 6 (etiqueta) + 10 (valor numérico) + 5*nLineas (texto) + 4 (margen)
+    const boxH = 20 + (letLines.length > 0 ? letLines.length * 4.5 + 3 : 0)
+
+    // Posicionar el cuadro 5mm arriba del margen inferior (272mm)
+    const pyBox = 272 - boxH
+
+    // Color gris azulado suave (igual al banner del tipo de avalúo)
+    doc.setFillColor(184,196,208); doc.rect(MG, pyBox, CW, boxH, 'F')
+
+    // Etiqueta
+    doc.setTextColor(...NAVY); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
+    doc.text(lblPortada, PW/2, pyBox+5.5, {align:'center'})
+
+    // Valor numérico
+    doc.setFontSize(15)
+    doc.text(fmtM(valConclPortada), PW/2, pyBox+14, {align:'center'})
+
+    // Texto en letras — todas las líneas
+    if(letLines.length > 0){
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+      doc.setTextColor(30,30,30)
+      letLines.forEach((ln, idx) => {
+        doc.text(ln, PW/2, pyBox + 19 + idx * 4.5, {align:'center'})
+      })
     }
   }
 
